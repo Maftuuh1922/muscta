@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../services/post/post_service.dart';
 import '../../chat/presentation/chat_screen.dart';
+import '../../post/presentation/create_post_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,89 +17,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   String? _currentlyPlaying;
   late AnimationController _marqueeController;
-
-  final List<MusicPost> _posts = [
-    MusicPost(
-      id: '1',
-      user: MusicUser(
-        username: 'john_music',
-        avatar:
-            'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face',
-        isVerified: true,
-      ),
-      music: MusicTrack(
-        title: 'Bohemian Rhapsody',
-        artist: 'Queen',
-        albumCover:
-            'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
-        duration: '5:55',
-      ),
-      caption:
-          'john_music: Still gives me chills every time! 🎸 This masterpiece never gets old. What\'s your favorite Queen song?',
-      postImage:
-          'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=800&h=800&fit=crop',
-      likes: 2847,
-      comments: 156,
-      reposts: 43,
-      timestamp: '2h',
-      isLiked: false,
-      isBookmarked: false,
-      isPlaying: false,
-    ),
-    MusicPost(
-      id: '2',
-      user: MusicUser(
-        username: 'sarah_beats',
-        avatar:
-            'https://images.unsplash.com/photo-1494790108755-2616b332c6c3?w=100&h=100&fit=crop&crop=face',
-        isVerified: false,
-      ),
-      music: MusicTrack(
-        title: 'Blinding Lights',
-        artist: 'The Weeknd',
-        albumCover:
-            'https://images.unsplash.com/photo-1571330735066-03aaa9429d89?w=300&h=300&fit=crop',
-        duration: '3:20',
-      ),
-      caption: 'Perfect vibes for tonight\'s drive 🌃✨ #synthwave #nightdrive',
-      postImage: null,
-      likes: 1432,
-      comments: 89,
-      reposts: 67,
-      timestamp: '4h',
-      isLiked: true,
-      isBookmarked: true,
-      isPlaying: false,
-      repostedBy: 'music_curator',
-    ),
-    MusicPost(
-      id: '3',
-      user: MusicUser(
-        username: 'rock_lover',
-        avatar:
-            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face',
-        isVerified: false,
-      ),
-      music: MusicTrack(
-        title: 'Thunderstruck',
-        artist: 'AC/DC',
-        albumCover:
-            'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
-        duration: '4:52',
-      ),
-      caption:
-          'Ready to rock! 🤘⚡ Just got my new guitar and this is the first song I had to play',
-      postImage:
-          'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=800&h=800&fit=crop',
-      likes: 956,
-      comments: 43,
-      reposts: 21,
-      timestamp: '6h',
-      isLiked: false,
-      isBookmarked: false,
-      isPlaying: false,
-    ),
-  ];
 
   @override
   void initState() {
@@ -117,16 +37,97 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CreatePostScreen()),
+          );
+          if (result == true) {
+            // Post created successfully, refresh UI if needed
+            setState(() {});
+          }
+        },
+        backgroundColor: AppColors.primaryPurple,
+        child: const Icon(Icons.add_rounded, color: Colors.white),
+      ),
       body: Column(
         children: [
           _buildTopBar(),
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: EdgeInsets.zero,
-              itemCount: _posts.length,
-              itemBuilder: (context, index) {
-                return _buildPostCard(_posts[index]);
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: PostService().getTimelinePosts(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: AppColors.primaryPurple),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  // Show demo posts if Firestore is not available
+                  final demoData = _getDemoData();
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: EdgeInsets.zero,
+                    itemCount: demoData.length,
+                    itemBuilder: (context, index) {
+                      final postData = demoData[index];
+                      return _buildPostCard(postData);
+                    },
+                  );
+                }
+
+                final posts = snapshot.data ?? [];
+                
+                if (posts.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.music_note_outlined, color: AppColors.mutedText, size: 64),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No posts yet',
+                          style: TextStyle(color: AppColors.primaryText, fontSize: 18, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Be the first to share your music!',
+                          style: TextStyle(color: AppColors.mutedText, fontSize: 14),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton(
+                          onPressed: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const CreatePostScreen()),
+                            );
+                            if (result == true) {
+                              setState(() {});
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryPurple,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Create Post'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: EdgeInsets.zero,
+                  itemCount: posts.length,
+                  itemBuilder: (context, index) {
+                    final postData = posts[index];
+                    return _buildPostCard(postData);
+                  },
+                );
               },
             ),
           ),
@@ -191,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildPostCard(MusicPost post) {
+  Widget _buildPostCard(Map<String, dynamic> postData) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -204,28 +205,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildPostHeader(post),
+            _buildPostHeader(postData),
             const SizedBox(height: 12),
-            _buildMusicInfo(post),
-            if (post.postImage != null) ...[
+            _buildMusicInfo(postData),
+            if (postData['imageUrl'] != null && postData['imageUrl'].isNotEmpty) ...[
               const SizedBox(height: 12),
-              _buildPostImage(post),
+              _buildPostImage(postData),
             ],
             const SizedBox(height: 12),
-            _buildInteractionButtons(post),
+            _buildInteractionButtons(postData),
             const SizedBox(height: 8),
-            _buildEngagementInfo(post),
-            if (post.repostedBy != null) ...[
-              const SizedBox(height: 6),
-              _buildRepostInfo(post),
-            ],
+            _buildEngagementInfo(postData),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPostHeader(MusicPost post) {
+  Widget _buildPostHeader(Map<String, dynamic> postData) {
+    final userData = postData['userData'] as Map<String, dynamic>? ?? {};
+    final createdAt = postData['createdAt'] as DateTime?;
+    final timeAgo = createdAt != null ? _getTimeAgo(createdAt) : 'now';
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
@@ -255,7 +256,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 color: Colors.white,
               ),
               child: CircleAvatar(
-                backgroundImage: NetworkImage(post.user.avatar),
+                backgroundImage: NetworkImage(
+                  userData['profileImageUrl'] as String? ?? 
+                  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face'
+                ),
                 radius: 16,
               ),
             ),
@@ -269,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     children: [
                       Flexible(
                         child: Text(
-                          post.user.username,
+                          userData['username'] as String? ?? 'Unknown User',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
@@ -278,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (post.user.isVerified) ...[
+                      if (userData['isVerified'] == true) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.all(3),
@@ -309,7 +313,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  post.timestamp,
+                  timeAgo,
                   style: const TextStyle(
                     color: Color(0xFF8E8E93),
                     fontSize: 12,
@@ -339,7 +343,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildMusicInfo(MusicPost post) {
+  Widget _buildMusicInfo(Map<String, dynamic> postData) {
+    final postId = postData['id'] as String;
+    final isPlaying = _currentlyPlaying == postId;
+    final albumCoverUrl = postData['albumCoverUrl'] as String? ?? 
+        'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop';
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Container(
@@ -361,7 +370,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   duration: const Duration(milliseconds: 300),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    boxShadow: post.isPlaying ? [
+                    boxShadow: isPlaying ? [
                       BoxShadow(
                         color: const Color(0xFF30D158).withOpacity(0.3),
                         blurRadius: 15,
@@ -386,8 +395,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       width: 45,
                       height: 45,
                       child: Image.network(
-                        post.music.albumCover,
+                        albumCoverUrl,
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: AppColors.cardBackground,
+                            child: const Icon(Icons.music_note, color: AppColors.mutedText),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -396,21 +411,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   right: -2,
                   bottom: -2,
                   child: GestureDetector(
-                    onTap: () => _handlePlayPause(post.id),
+                    onTap: () => _handlePlayPause(postId),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       width: 24,
                       height: 24,
                       decoration: BoxDecoration(
-                        color: post.isPlaying ? const Color(0xFF30D158) : const Color(0xFF8E8E93),
+                        color: isPlaying ? AppColors.success : const Color(0xFF8E8E93),
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: const Color(0xFF1C1C1E),
                           width: 2,
                         ),
-                        boxShadow: post.isPlaying ? [
+                        boxShadow: isPlaying ? [
                           BoxShadow(
-                            color: const Color(0xFF30D158).withOpacity(0.6),
+                            color: AppColors.success.withOpacity(0.6),
                             blurRadius: 12,
                             spreadRadius: 2,
                           ),
@@ -419,10 +434,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 150),
                         child: Icon(
-                          post.isPlaying ? Icons.pause : Icons.play_arrow,
+                          isPlaying ? Icons.pause : Icons.play_arrow,
                           color: Colors.black,
                           size: 14,
-                          key: ValueKey(post.isPlaying),
+                          key: ValueKey(isPlaying),
                         ),
                       ),
                     ),
@@ -437,7 +452,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    post.music.title,
+                    postData['musicTitle'] as String? ?? 'Unknown Track',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 14,
@@ -448,7 +463,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    post.music.artist,
+                    postData['musicArtist'] as String? ?? 'Unknown Artist',
                     style: const TextStyle(
                       color: Color(0xFF8E8E93),
                       fontSize: 12,
@@ -462,7 +477,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             const SizedBox(width: 8),
             // Duration
             Text(
-              post.music.duration,
+              _formatDuration(postData['musicDuration'] as String?),
               style: const TextStyle(
                 color: Color(0xFF8E8E93),
                 fontSize: 11,
@@ -471,53 +486,72 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(width: 12),
             // Animated equalizer
-            AnimatedEqualizer(isActive: post.isPlaying, height: 20, width: 28),
+            AnimatedEqualizer(isActive: isPlaying, height: 20, width: 28),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPostImage(MusicPost post) {
+  Widget _buildPostImage(Map<String, dynamic> postData) {
+    final imageUrl = postData['imageUrl'] as String?;
+    if (imageUrl == null || imageUrl.isEmpty) return const SizedBox.shrink();
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: AspectRatio(
           aspectRatio: 1,
-          child: Image.network(post.postImage!, fit: BoxFit.cover),
+          child: Image.network(
+            imageUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: AppColors.cardBackground,
+                child: const Center(
+                  child: Icon(Icons.broken_image, color: AppColors.mutedText, size: 48),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildInteractionButtons(MusicPost post) {
+  Widget _buildInteractionButtons(Map<String, dynamic> postData) {
+    final postId = postData['id'] as String;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final likes = (postData['likes'] as List<dynamic>?) ?? [];
+    final isLiked = currentUserId != null && likes.contains(currentUserId);
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
           // Like button
           GestureDetector(
-            onTap: () => _handleLike(post.id),
+            onTap: () => _handleLike(postId),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: post.isLiked 
-                  ? const Color(0xFFFF3B30).withOpacity(0.15)
+                color: isLiked 
+                  ? AppColors.error.withOpacity(0.15)
                   : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
-                border: post.isLiked 
-                  ? Border.all(color: const Color(0xFFFF3B30).withOpacity(0.3), width: 1)
+                border: isLiked 
+                  ? Border.all(color: AppColors.error.withOpacity(0.3), width: 1)
                   : null,
               ),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: Icon(
-                  post.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  color: post.isLiked ? const Color(0xFFFF3B30) : Colors.white,
+                  isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  color: isLiked ? AppColors.error : Colors.white,
                   size: 22,
-                  key: ValueKey(post.isLiked),
+                  key: ValueKey(isLiked),
                 ),
               ),
             ),
@@ -525,7 +559,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(width: 16),
           // Comment button
           GestureDetector(
-            onTap: () => _handleComment(post.id),
+            onTap: () => _handleComment(postId),
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -542,7 +576,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(width: 16),
           // Share button
           GestureDetector(
-            onTap: () => _handleShare(post.id),
+            onTap: () => _handleShare(postId),
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -556,10 +590,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          // Repost button
+          const Spacer(),
+          // More options
           GestureDetector(
-            onTap: () => _handleRepost(post.id),
+            onTap: () => _showMoreOptions(postData),
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -567,36 +601,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(
-                Icons.repeat_rounded,
+                Icons.bookmark_border_rounded,
                 color: Colors.white,
                 size: 22,
-              ),
-            ),
-          ),
-          const Spacer(),
-          // Bookmark button
-          GestureDetector(
-            onTap: () => _handleBookmark(post.id),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: post.isBookmarked 
-                  ? const Color(0xFFFFD60A).withOpacity(0.15)
-                  : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
-                border: post.isBookmarked 
-                  ? Border.all(color: const Color(0xFFFFD60A).withOpacity(0.3), width: 1)
-                  : null,
-              ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: Icon(
-                  post.isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                  color: post.isBookmarked ? const Color(0xFFFFD60A) : Colors.white,
-                  size: 22,
-                  key: ValueKey(post.isBookmarked),
-                ),
               ),
             ),
           ),
@@ -605,7 +612,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildEngagementInfo(MusicPost post) {
+  Widget _buildEngagementInfo(Map<String, dynamic> postData) {
+    final likes = (postData['likes'] as List<dynamic>?) ?? [];
+    final likesCount = likes.length;
+    final caption = postData['caption'] as String? ?? '';
+    final userData = postData['userData'] as Map<String, dynamic>? ?? {};
+    final username = userData['username'] as String? ?? 'Unknown User';
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
@@ -614,94 +627,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Row(
             children: [
               Text(
-                '${_formatNumber(post.likes)} likes',
+                '${_formatNumber(likesCount)} likes',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(width: 12),
-              Text(
-                '${post.reposts} reposts',
-                style: const TextStyle(
-                  color: Color(0xFF8E8E93),
-                  fontSize: 12,
-                ),
-              ),
             ],
           ),
-          const SizedBox(height: 6),
-          _buildCaptionLine(post),
-          const SizedBox(height: 6),
-          GestureDetector(
-            onTap: () => _handleComment(post.id),
-            child: Text(
-              'View all ${post.comments} comments',
-              style: const TextStyle(
-                color: Color(0xFF8E8E93),
-                fontSize: 12,
-              ),
-            ),
-          ),
+          if (caption.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _buildCaptionLine(username, caption),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildCaptionLine(MusicPost post) {
-    final username = post.user.username;
-    final text = post.caption;
-
-    if (text.startsWith('$username:')) {
-      final rest = text.substring(username.length + 1).trim();
-      return RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: '$username ',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            TextSpan(
-              text: rest,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Text(
-      text,
-      style: const TextStyle(color: Colors.white, fontSize: 13),
-    );
-  }
-
-  Widget _buildRepostInfo(MusicPost post) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
+  Widget _buildCaptionLine(String username, String caption) {
+    return RichText(
+      text: TextSpan(
         children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF8E8E93).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.repeat_rounded,
-              color: Color(0xFF8E8E93),
-              size: 12,
+          TextSpan(
+            text: '$username ',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(width: 6),
-          Text(
-            '${post.repostedBy} reposted',
-            style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12),
+          TextSpan(
+            text: caption,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
           ),
         ],
       ),
@@ -715,115 +673,125 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return number.toString();
   }
 
-  void _handleLike(String postId) {
-    setState(() {
-      final post = _posts.firstWhere((p) => p.id == postId);
-      post.isLiked = !post.isLiked;
-      if (post.isLiked) {
-        post.likes++;
-      } else {
-        post.likes--;
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m';
+    } else {
+      return 'now';
+    }
+  }
+
+  String _formatDuration(String? duration) {
+    if (duration == null || duration.isEmpty) return '0:00';
+    return duration;
+  }
+
+  void _handleLike(String postId) async {
+    try {
+      await PostService().toggleLike(postId);
+      // The StreamBuilder will automatically update the UI
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error liking post: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
       }
-    });
+    }
   }
 
   void _handleComment(String postId) {
     debugPrint('Comment on post: $postId');
+    // TODO: Navigate to comments screen
   }
 
   void _handleShare(String postId) {
     debugPrint('Share post: $postId');
+    // TODO: Implement share functionality
   }
 
-  void _handleRepost(String postId) {
-    setState(() {
-      final post = _posts.firstWhere((p) => p.id == postId);
-      post.reposts++;
-    });
-  }
-
-  void _handleBookmark(String postId) {
-    setState(() {
-      final post = _posts.firstWhere((p) => p.id == postId);
-      post.isBookmarked = !post.isBookmarked;
-    });
+  void _showMoreOptions(Map<String, dynamic> postData) {
+    debugPrint('Show more options for post: ${postData['id']}');
+    // TODO: Show bottom sheet with more options
   }
 
   void _handlePlayPause(String postId) {
     setState(() {
       if (_currentlyPlaying == postId) {
         _currentlyPlaying = null;
-        final post = _posts.firstWhere((p) => p.id == postId);
-        post.isPlaying = false;
       } else {
-        for (var p in _posts) {
-          p.isPlaying = false;
-        }
         _currentlyPlaying = postId;
-        final post = _posts.firstWhere((p) => p.id == postId);
-        post.isPlaying = true;
       }
     });
   }
-}
 
-// Data models
-class MusicPost {
-  final String id;
-  final MusicUser user;
-  final MusicTrack music;
-  final String caption;
-  final String? postImage;
-  int likes;
-  final int comments;
-  int reposts;
-  final String timestamp;
-  bool isLiked;
-  bool isBookmarked;
-  bool isPlaying;
-  final String? repostedBy;
-
-  MusicPost({
-    required this.id,
-    required this.user,
-    required this.music,
-    required this.caption,
-    this.postImage,
-    required this.likes,
-    required this.comments,
-    required this.reposts,
-    required this.timestamp,
-    required this.isLiked,
-    required this.isBookmarked,
-    required this.isPlaying,
-    this.repostedBy,
-  });
-}
-
-class MusicUser {
-  final String username;
-  final String avatar;
-  final bool isVerified;
-
-  const MusicUser({
-    required this.username,
-    required this.avatar,
-    required this.isVerified,
-  });
-}
-
-class MusicTrack {
-  final String title;
-  final String artist;
-  final String albumCover;
-  final String duration;
-
-  const MusicTrack({
-    required this.title,
-    required this.artist,
-    required this.albumCover,
-    required this.duration,
-  });
+  List<Map<String, dynamic>> _getDemoData() {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? 'demo_user';
+    final now = DateTime.now();
+    
+    return [
+      {
+        'id': 'demo_1',
+        'userId': 'user_1',
+        'musicTitle': 'Bohemian Rhapsody',
+        'musicArtist': 'Queen',
+        'musicDuration': '5:55',
+        'albumCoverUrl': 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
+        'imageUrl': 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=800&h=800&fit=crop',
+        'caption': 'Still gives me chills every time! 🎸 This masterpiece never gets old.',
+        'likes': ['user_2', 'user_3', 'user_4'],
+        'createdAt': now.subtract(const Duration(hours: 2)),
+        'userData': {
+          'username': 'john_music',
+          'profileImageUrl': 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face',
+          'isVerified': true,
+        }
+      },
+      {
+        'id': 'demo_2',
+        'userId': 'user_2',
+        'musicTitle': 'Blinding Lights',
+        'musicArtist': 'The Weeknd',
+        'musicDuration': '3:20',
+        'albumCoverUrl': 'https://images.unsplash.com/photo-1571330735066-03aaa9429d89?w=300&h=300&fit=crop',
+        'imageUrl': '',
+        'caption': 'Perfect vibes for tonight\'s drive 🌃✨ #synthwave #nightdrive',
+        'likes': [currentUserId, 'user_3'],
+        'createdAt': now.subtract(const Duration(hours: 4)),
+        'userData': {
+          'username': 'sarah_beats',
+          'profileImageUrl': 'https://images.unsplash.com/photo-1494790108755-2616b332c6c3?w=100&h=100&fit=crop&crop=face',
+          'isVerified': false,
+        }
+      },
+      {
+        'id': 'demo_3',
+        'userId': 'user_3',
+        'musicTitle': 'Thunderstruck',
+        'musicArtist': 'AC/DC',
+        'musicDuration': '4:52',
+        'albumCoverUrl': 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
+        'imageUrl': 'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=800&h=800&fit=crop',
+        'caption': 'Ready to rock! 🤘⚡ Just got my new guitar and this is the first song I had to play',
+        'likes': ['user_1'],
+        'createdAt': now.subtract(const Duration(hours: 6)),
+        'userData': {
+          'username': 'rock_lover',
+          'profileImageUrl': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face',
+          'isVerified': false,
+        }
+      },
+    ];
+  }
 }
 
 class AnimatedEqualizer extends StatefulWidget {
@@ -895,10 +863,10 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
     final barWidth = (widget.width - spacing * (barCount - 1)) / barCount;
 
     const colors = [
-      Color(0xFF30D158), // Green
-      Color(0xFF32D74B), // Light Green  
-      Color(0xFFFF9F0A), // Orange
-      Color(0xFFBF5AF2), // Purple
+      AppColors.chart1, // Teal
+      AppColors.chart2, // Orange  
+      AppColors.chart3, // Purple
+      AppColors.chart4, // Merah
     ];
 
     return SizedBox(

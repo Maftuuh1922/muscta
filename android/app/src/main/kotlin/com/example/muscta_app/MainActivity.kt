@@ -1,4 +1,4 @@
-package com.example.muscta_app
+package muscta.com
 
 import io.flutter.embedding.android.FlutterActivity
 

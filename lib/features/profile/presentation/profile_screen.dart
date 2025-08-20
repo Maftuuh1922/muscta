@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../services/user/user_service.dart';
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -12,7 +15,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  final _profile = ProfileData(
+  final _demoProfile = ProfileData(
     username: 'your_username',
     name: 'Your Name',
     avatar:
@@ -122,64 +125,79 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.primaryBackground,
-      appBar: AppBar(
-        backgroundColor: AppColors.primaryBackground,
-        elevation: 0,
-        title: Text(
-          '@${_profile.username}',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.primaryText,
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(
-              Icons.more_horiz_rounded,
-              color: AppColors.primaryText,
-              size: 22,
-            ),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(
-              Icons.settings_rounded,
-              color: AppColors.primaryText,
-              size: 22,
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Column(
-                children: [
-                  _buildProfileHeader(),
-                  _buildTabBar(),
-                  SizedBox(
-                    height: 520,
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [_buildPostsGrid(), _buildPlaylistsList()],
-                    ),
-                  ),
-                ],
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: UserService().currentUserStream(),
+      builder: (context, snap) {
+        final data = snap.data;
+        final profile = ProfileData(
+          username: (data?['username'] as String?) ?? _demoProfile.username,
+          name: (data?['displayName'] as String?) ?? _demoProfile.name,
+          avatar: (data?['photoURL'] as String?) ?? _demoProfile.avatar,
+          bio: (data?['bio'] as String?) ?? _demoProfile.bio,
+          website: (data?['website'] as String?) ?? _demoProfile.website,
+          posts: (data?['posts'] as int?) ?? _demoProfile.posts,
+          followers: (data?['followers'] as int?) ?? _demoProfile.followers,
+          following: (data?['following'] as int?) ?? _demoProfile.following,
+          genres: (data?['genres'] as List?)?.cast<String>() ?? _demoProfile.genres,
+          topArtists: (data?['topArtists'] as List?)?.cast<String>() ?? _demoProfile.topArtists,
+          isVerified: (data?['verified'] as bool?) ?? _demoProfile.isVerified,
+        );
+
+        return Scaffold(
+          backgroundColor: AppColors.primaryBackground,
+          appBar: AppBar(
+            backgroundColor: AppColors.primaryBackground,
+            elevation: 0,
+            title: Text(
+              '@${profile.username}',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primaryText,
               ),
             ),
+            actions: [
+              IconButton(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                },
+                icon: const Icon(
+                  Icons.logout_rounded,
+                  color: AppColors.primaryText,
+                  size: 22,
+                ),
+                tooltip: 'Logout',
+              ),
+            ],
           ),
-        ],
-      ),
+          body: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Column(
+                    children: [
+                      _buildProfileHeader(profile),
+                      _buildTabBar(),
+                      SizedBox(
+                        height: 520,
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [_buildPostsGrid(), _buildPlaylistsList()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildProfileHeader() {
+  Widget _buildProfileHeader(ProfileData profile) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -201,12 +219,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                         width: 4,
                       ),
                       image: DecorationImage(
-                        image: NetworkImage(_profile.avatar),
+                        image: NetworkImage(profile.avatar),
                         fit: BoxFit.cover,
                       ),
                     ),
                   ),
-                  if (_profile.isVerified)
+                  if (profile.isVerified)
                     Positioned(
                       right: -2,
                       bottom: -2,
@@ -240,7 +258,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     Row(
                       children: [
                         Text(
-                          _profile.name,
+                          profile.name,
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
@@ -253,9 +271,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildStat('posts', _profile.posts.toString()),
-                        _buildStat('followers', _profile.followers.toString()),
-                        _buildStat('following', _profile.following.toString()),
+                        _buildStat('posts', profile.posts.toString()),
+                        _buildStat('followers', profile.followers.toString()),
+                        _buildStat('following', profile.following.toString()),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -263,7 +281,21 @@ class _ProfileScreenState extends State<ProfileScreen>
                       children: [
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () {},
+                            onPressed: () async {
+                              final changed = await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => EditProfileScreen(
+                                    displayName: profile.name,
+                                    username: profile.username,
+                                    bio: profile.bio,
+                                    website: profile.website,
+                                  ),
+                                ),
+                              );
+                              if (changed == true && mounted) {
+                                setState(() {});
+                              }
+                            },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primaryPurple,
                               foregroundColor: AppColors.primaryText,
@@ -317,17 +349,17 @@ class _ProfileScreenState extends State<ProfileScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _profile.bio,
+                profile.bio,
                 style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.primaryText,
                 ),
               ),
-              if (_profile.website != null && _profile.website!.isNotEmpty)
+              if (profile.website != null && profile.website!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    '🔗 ${_profile.website}',
+                    '🔗 ${profile.website}',
                     style: const TextStyle(
                       fontSize: 14,
                       color: AppColors.primaryPurple,
@@ -386,7 +418,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                           Wrap(
                             spacing: 6,
                             runSpacing: 6,
-                            children: _profile.genres
+                            children: profile.genres
                                 .map((g) => _genreBadge(g))
                                 .toList(),
                           ),
@@ -406,7 +438,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                             ),
                           ),
                           const SizedBox(height: 8),
-                          ..._profile.topArtists
+                          ...profile.topArtists
                               .take(3)
                               .map(
                                 (a) => Padding(

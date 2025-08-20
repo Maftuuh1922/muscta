@@ -163,8 +163,8 @@ class _ActivityScreenState extends State<ActivityScreen>
         title: const Text(
           'Activity',
           style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
             color: AppColors.primaryText,
           ),
         ),
@@ -189,59 +189,47 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   Widget _buildTabs() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: const BoxDecoration(
-        color: AppColors.primaryBackground,
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderColor, width: 0.5),
-        ),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.borderColor, width: 0.5),
       ),
-      child: Container(
-        height: 32,
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.borderColor, width: 0.4),
-        ),
-        child: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          indicatorSize: TabBarIndicatorSize.label,
-          labelPadding: const EdgeInsets.symmetric(horizontal: 12),
-          indicatorPadding: const EdgeInsets.all(3),
-          indicator: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primaryPurple.withOpacity(0.18),
-                AppColors.secondaryPurple.withOpacity(0.18),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: AppColors.primaryPurple.withOpacity(0.30),
-              width: 0.7,
-            ),
+      child: TabBar(
+        controller: _tabController,
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        indicator: BoxDecoration(
+          color: AppColors.primaryPurple.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: AppColors.primaryPurple.withOpacity(0.3),
+            width: 1,
           ),
-          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          labelColor: AppColors.primaryText,
-          unselectedLabelColor: AppColors.mutedText,
-          splashBorderRadius: BorderRadius.circular(14),
-          overlayColor: WidgetStateProperty.all(Colors.transparent),
-          tabs: const [
-            Tab(text: 'Following'),
-            Tab(text: 'You'),
-          ],
         ),
+        labelStyle: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        labelColor: AppColors.primaryText,
+        unselectedLabelColor: AppColors.mutedText,
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
+        tabs: const [
+          Tab(text: 'Following'),
+          Tab(text: 'You'),
+        ],
       ),
     );
   }
 
   Widget _buildYouList() {
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: _youActivities.length,
       itemBuilder: (context, index) {
         return _buildActivityTile(_youActivities[index]);
@@ -251,7 +239,7 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   Widget _buildFollowingList() {
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: _followingActivities.length,
       itemBuilder: (context, index) {
         return _buildActivityTile(_followingActivities[index]);
@@ -263,18 +251,18 @@ class _ActivityScreenState extends State<ActivityScreen>
     final bool isNew = a.isNew == true;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isNew
-            ? AppColors.primaryPurple.withOpacity(0.06)
+            ? AppColors.primaryPurple.withOpacity(0.08)
             : AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isNew
-              ? AppColors.primaryPurple.withOpacity(0.22)
+              ? AppColors.primaryPurple.withOpacity(0.25)
               : AppColors.borderColor,
-          width: 0.7,
+          width: 0.8,
         ),
       ),
       child: Row(
@@ -284,7 +272,7 @@ class _ActivityScreenState extends State<ActivityScreen>
           Stack(
             children: [
               CircleAvatar(
-                radius: 18,
+                radius: 20,
                 backgroundColor: AppColors.borderColor,
                 backgroundImage: a.user.avatar != null && a.user.avatar!.isNotEmpty
                     ? NetworkImage(a.user.avatar!)
@@ -292,16 +280,20 @@ class _ActivityScreenState extends State<ActivityScreen>
                 child: (a.user.avatar == null || a.user.avatar!.isEmpty)
                     ? Text(
                         a.user.username.substring(0, 1).toUpperCase(),
-                        style: const TextStyle(color: Colors.white),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       )
                     : null,
               ),
               Positioned(
-                right: -3,
-                bottom: -3,
+                right: -2,
+                bottom: -2,
                 child: Container(
-                  width: 18,
-                  height: 18,
+                  width: 20,
+                  height: 20,
                   decoration: BoxDecoration(
                     color: AppColors.primaryBackground,
                     shape: BoxShape.circle,
@@ -312,9 +304,9 @@ class _ActivityScreenState extends State<ActivityScreen>
               ),
             ],
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
 
-          // Texts
+          // Content section
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -332,16 +324,16 @@ class _ActivityScreenState extends State<ActivityScreen>
                                 TextSpan(
                                   text: '@${a.user.username} ',
                                   style: const TextStyle(
-                                    color: Colors.white,
+                                    color: AppColors.primaryText,
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 12,
+                                    fontSize: 14,
                                   ),
                                 ),
                                 TextSpan(
                                   text: a.action,
                                   style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
+                                    color: AppColors.primaryText,
+                                    fontSize: 14,
                                   ),
                                 ),
                               ],
@@ -349,50 +341,51 @@ class _ActivityScreenState extends State<ActivityScreen>
                           ),
                           if (a.comment != null && a.comment!.isNotEmpty)
                             Padding(
-                              padding: const EdgeInsets.only(top: 3),
+                              padding: const EdgeInsets.only(top: 4),
                               child: Text(
                                 '"${a.comment}"',
                                 style: const TextStyle(
                                   color: AppColors.mutedText,
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontStyle: FontStyle.italic,
                                 ),
                               ),
                             ),
                           if (a.timestamp != null)
                             Padding(
-                              padding: const EdgeInsets.only(top: 3),
+                              padding: const EdgeInsets.only(top: 4),
                               child: Text(
                                 a.timestamp!,
                                 style: const TextStyle(
                                   color: AppColors.mutedText,
-                                  fontSize: 10,
+                                  fontSize: 12,
                                 ),
                               ),
                             ),
                         ],
                       ),
                     ),
-
-                    // Right content: follow button, post thumb, music
-                    const SizedBox(width: 6),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                  ],
+                ),
+                
+                // Right content section (moved below text)
+                if (a.type == ActivityType.follow && a.isFollowing != null ||
+                    a.post != null ||
+                    a.music != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         if (a.type == ActivityType.follow && a.isFollowing != null)
                           _followButton(a),
-                        if (a.post != null) ...[
-                          const SizedBox(width: 6),
+                        if (a.post != null)
                           _postThumb(a.post!),
-                        ],
-                        if (a.music != null) ...[
-                          const SizedBox(width: 6),
+                        if (a.music != null)
                           _musicThumb(a.music!),
-                        ],
                       ],
                     ),
-                  ],
-                ),
+                  ),
               ],
             ),
           ),
@@ -410,13 +403,13 @@ class _ActivityScreenState extends State<ActivityScreen>
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: following ? Colors.transparent : AppColors.primaryPurple,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: following ? AppColors.primaryPurple : Colors.transparent,
-            width: 1,
+            color: AppColors.primaryPurple,
+            width: 1.2,
           ),
         ),
         child: Text(
@@ -433,12 +426,27 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   Widget _postThumb(ActivityPost post) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       child: Image.network(
         post.image,
-        width: 40,
-        height: 40,
+        width: 48,
+        height: 48,
         fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.borderColor,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.image,
+              color: AppColors.mutedText,
+              size: 20,
+            ),
+          );
+        },
       ),
     );
   }
@@ -448,26 +456,40 @@ class _ActivityScreenState extends State<ActivityScreen>
       mainAxisSize: MainAxisSize.min,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           child: Image.network(
             music.cover,
-            width: 40,
-            height: 40,
+            width: 48,
+            height: 48,
             fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.borderColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.music_note,
+                  color: AppColors.mutedText,
+                  size: 20,
+                ),
+              );
+            },
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
         Container(
-          width: 28,
-          height: 28,
+          width: 32,
+          height: 32,
           decoration: BoxDecoration(
-            color: AppColors.cardBackground,
+            color: AppColors.primaryPurple,
             shape: BoxShape.circle,
-            border: Border.all(color: AppColors.borderColor, width: 0.6),
           ),
           child: const Icon(
             Icons.play_arrow_rounded,
-            size: 18,
+            size: 20,
             color: Colors.white,
           ),
         ),
@@ -478,13 +500,29 @@ class _ActivityScreenState extends State<ActivityScreen>
   Widget _typeIcon(ActivityType type) {
     switch (type) {
       case ActivityType.like:
-        return const Icon(Icons.favorite_rounded, size: 12, color: Color(0xFFEF4444));
+        return const Icon(
+          Icons.favorite_rounded,
+          size: 12,
+          color: Color(0xFFEF4444),
+        );
       case ActivityType.comment:
-        return const Icon(Icons.textsms_rounded, size: 12, color: AppColors.primaryPurple);
+        return const Icon(
+          Icons.chat_bubble_rounded,
+          size: 12,
+          color: AppColors.primaryPurple,
+        );
       case ActivityType.follow:
-        return const Icon(Icons.person_add_rounded, size: 12, color: AppColors.success);
+        return const Icon(
+          Icons.person_add_rounded,
+          size: 12,
+          color: AppColors.success,
+        );
       case ActivityType.musicRecommendation:
-        return const Icon(Icons.music_note_rounded, size: 12, color: AppColors.secondaryPurple);
+        return const Icon(
+          Icons.music_note_rounded,
+          size: 12,
+          color: AppColors.secondaryPurple,
+        );
     }
   }
 }

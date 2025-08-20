@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "499225655134",
+    "project_id": "musicta-9cd36",
+    "storage_bucket": "musicta-9cd36.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:499225655134:android:6947cfb7f66e9a4751c1cf",
+        "android_client_info": {
+          "package_name": "muscta.com"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "499225655134-57b007gof4t2nblvslilphju8tet98gd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "muscta.com",
+            "certificate_hash": "e0bd2258b2f961ebd9120700e6fb1317ac891f28"
+          }
+        },
+        {
+          "client_id": "499225655134-euknj7e53v1005g9ukhiurjlgojq5ncg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "muscta.com",
+            "certificate_hash": "bc19dcd1cb8c0108043ea8822cf49be2587d9bf9"
+          }
+        },
+        {
+          "client_id": "499225655134-rvii38sb3514m2fu1ui17ponp59hpiln.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCW8Qii2qaaN5MfXB853VFiUOUm7dEM2yw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "499225655134-rvii38sb3514m2fu1ui17ponp59hpiln.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
