@@ -24,7 +24,7 @@ android {
     defaultConfig {
         applicationId = "muscta.com"
         // Firebase Auth butuh minSdk >= 23
-        minSdk = 23
+        minSdkVersion(flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

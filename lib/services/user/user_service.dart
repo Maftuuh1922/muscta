@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../local_storage_service.dart';
 
 class UserService {
   final _col = FirebaseFirestore.instance.collection('users');
@@ -14,67 +15,271 @@ class UserService {
     required String fullName,
     String? bio,
     File? profileImage,
+    List<String>? genres,
+    List<String>? topArtists,
   }) async {
     String? profileImageUrl;
 
-    // Upload profile image if provided
-    if (profileImage != null) {
-      profileImageUrl = await _uploadProfileImage(userId, profileImage);
-    }
+    try {
+      // Upload profile image if provided
+      if (profileImage != null) {
+        print('Uploading profile image...');
+        try {
+          profileImageUrl = await _uploadProfileImage(userId, profileImage);
+          print('Profile image uploaded successfully: $profileImageUrl');
+        } catch (imageError) {
+          print('Image upload failed, continuing without image: $imageError');
+          // Continue without image - don't fail the entire profile creation
+          profileImageUrl = null;
+        }
+      }
 
-    final userData = {
-      'uid': userId,
-      'username': username.toLowerCase().trim(),
-      'fullName': fullName.trim(),
-      'bio': bio?.trim() ?? '',
-      'profileImageUrl': profileImageUrl ?? '',
-      'email': FirebaseAuth.instance.currentUser?.email,
-      'displayName': fullName.trim(),
-      'photoURL': profileImageUrl,
-      'posts': 0,
-      'followers': 0,
-      'following': 0,
-      'isVerified': false,
-      'genres': <String>[],
-      'topArtists': <String>[],
-      'website': '',
-      'profileCompleted': true,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
+      print('Creating user profile data...');
+      final userData = {
+        'uid': userId,
+        'username': username.toLowerCase().trim(),
+        'fullName': fullName.trim(),
+        'bio': bio?.trim() ?? '',
+        'profileImageUrl': profileImageUrl ?? '',
+        'email': FirebaseAuth.instance.currentUser?.email,
+        'displayName': fullName.trim(),
+        'photoURL': profileImageUrl,
+        'posts': 0,
+        'followers': 0,
+        'following': 0,
+        'isVerified': false,
+        'genres': genres ?? <String>[],
+        'topArtists': topArtists ?? <String>[],
+        'website': '',
+        'profileCompleted': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
 
-    await _col.doc(userId).set(userData, SetOptions(merge: true));
+      print('Saving user profile to Firestore...');
+      try {
+        await _col.doc(userId).set(userData, SetOptions(merge: true)).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw Exception('Firestore operation timeout. Please check your connection.');
+          },
+        );
+        print('User profile saved successfully');
+      } on FirebaseException catch (firestoreError) {
+        print('Firestore error: ${firestoreError.code} - ${firestoreError.message}');
+        
+        // Handle specific Firestore errors
+        switch (firestoreError.code) {
+          case 'not-found':
+            print('Firestore database not found, saving locally...');
+            await LocalStorageService.saveUserProfile(
+              userId: userId,
+              username: username.toLowerCase().trim(),
+              fullName: fullName.trim(),
+              bio: bio?.trim(),
+              profileImageUrl: profileImageUrl,
+              genres: genres,
+              topArtists: topArtists,
+            );
+            print('Profile saved locally as fallback');
+            return; // Exit successfully with local storage
+          case 'permission-denied':
+            print('Firestore permission denied, saving locally...');
+            await LocalStorageService.saveUserProfile(
+              userId: userId,
+              username: username.toLowerCase().trim(),
+              fullName: fullName.trim(),
+              bio: bio?.trim(),
+              profileImageUrl: profileImageUrl,
+              genres: genres,
+              topArtists: topArtists,
+            );
+            print('Profile saved locally as fallback');
+            return; // Exit successfully with local storage
+          case 'unavailable':
+            print('Firestore unavailable, saving locally...');
+            await LocalStorageService.saveUserProfile(
+              userId: userId,
+              username: username.toLowerCase().trim(),
+              fullName: fullName.trim(),
+              bio: bio?.trim(),
+              profileImageUrl: profileImageUrl,
+              genres: genres,
+              topArtists: topArtists,
+            );
+            print('Profile saved locally as fallback');
+            return; // Exit successfully with local storage
+          case 'deadline-exceeded':
+            throw Exception('Firestore request timeout. Please check your connection.');
+          default:
+            print('Unknown Firestore error, saving locally...');
+            await LocalStorageService.saveUserProfile(
+              userId: userId,
+              username: username.toLowerCase().trim(),
+              fullName: fullName.trim(),
+              bio: bio?.trim(),
+              profileImageUrl: profileImageUrl,
+              genres: genres,
+              topArtists: topArtists,
+            );
+            print('Profile saved locally as fallback');
+            return; // Exit successfully with local storage
+        }
+      } catch (timeoutError) {
+        if (timeoutError.toString().contains('timeout')) {
+          print('Firestore timeout, saving locally as fallback...');
+          await LocalStorageService.saveUserProfile(
+            userId: userId,
+            username: username.toLowerCase().trim(),
+            fullName: fullName.trim(),
+            bio: bio?.trim(),
+            profileImageUrl: profileImageUrl,
+            genres: genres,
+            topArtists: topArtists,
+          );
+          print('Profile saved locally as fallback');
+          return; // Exit successfully with local storage
+        }
+        rethrow;
+      }
 
-    // Update Firebase Auth profile
-    await FirebaseAuth.instance.currentUser?.updateDisplayName(fullName.trim());
-    if (profileImageUrl != null) {
-      await FirebaseAuth.instance.currentUser?.updatePhotoURL(profileImageUrl);
+      // Update Firebase Auth profile
+      print('Updating Firebase Auth profile...');
+      try {
+        await FirebaseAuth.instance.currentUser?.updateDisplayName(fullName.trim());
+        if (profileImageUrl != null) {
+          await FirebaseAuth.instance.currentUser?.updatePhotoURL(profileImageUrl);
+        }
+        print('Firebase Auth profile updated successfully');
+      } catch (authError) {
+        print('Failed to update auth profile, but continuing: $authError');
+        // Don't fail the entire operation if auth update fails
+      }
+      
+    } on FirebaseException catch (e) {
+      print('Firebase error in createOrUpdateUserProfile: ${e.code} - ${e.message}');
+      throw Exception('Failed to create profile: ${e.message ?? e.code}');
+    } catch (e) {
+      print('Error in createOrUpdateUserProfile: $e');
+      throw Exception('Failed to create profile: ${e.toString()}');
     }
   }
 
   // Upload profile image to Firebase Storage
   Future<String> _uploadProfileImage(String userId, File imageFile) async {
-    final ref = _storage.ref().child('users').child(userId).child('profile.jpg');
-    final uploadTask = ref.putFile(imageFile);
-    final snapshot = await uploadTask;
-    return await snapshot.ref.getDownloadURL();
+    try {
+      // Check if file exists
+      if (!await imageFile.exists()) {
+        throw Exception('Image file does not exist');
+      }
+
+      // Create unique filename with timestamp
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'profile_$timestamp.jpg';
+      
+      // Use a simpler path structure
+      final ref = _storage.ref('profile_images/$userId/$fileName');
+      
+      print('Uploading to path: profile_images/$userId/$fileName');
+      print('File size: ${await imageFile.length()} bytes');
+      
+      // Add metadata
+      final metadata = SettableMetadata(
+        contentType: 'image/jpeg',
+        customMetadata: {
+          'uploaded_by': userId,
+          'upload_time': timestamp.toString(),
+        },
+      );
+      
+      // Start upload
+      final uploadTask = ref.putFile(imageFile, metadata);
+      
+      // Monitor upload progress
+      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+        print('Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
+      });
+      
+      // Wait for upload to complete with timeout
+      final snapshot = await uploadTask.timeout(
+        const Duration(minutes: 3),
+        onTimeout: () {
+          uploadTask.cancel();
+          throw Exception('Upload timeout - please check your internet connection');
+        },
+      );
+      
+      if (snapshot.state != TaskState.success) {
+        throw Exception('Upload failed with state: ${snapshot.state}');
+      }
+      
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      print('Image uploaded successfully: $downloadUrl');
+      return downloadUrl;
+      
+    } on FirebaseException catch (e) {
+      print('Firebase error uploading image: ${e.code} - ${e.message}');
+      
+      // Handle specific Firebase Storage errors
+      switch (e.code) {
+        case 'storage/unauthorized':
+          throw Exception('Not authorized to upload images. Please check Firebase Storage rules.');
+        case 'storage/canceled':
+          throw Exception('Upload was canceled. Please try again.');
+        case 'storage/unknown':
+          throw Exception('An unknown error occurred. Please try again.');
+        case 'storage/object-not-found':
+          throw Exception('Storage bucket not found. Please check Firebase configuration.');
+        case 'storage/bucket-not-found':
+          throw Exception('Storage bucket not found. Please contact support.');
+        case 'storage/project-not-found':
+          throw Exception('Firebase project not found. Please check configuration.');
+        case 'storage/quota-exceeded':
+          throw Exception('Storage quota exceeded. Please try again later.');
+        case 'storage/unauthenticated':
+          throw Exception('User not authenticated. Please sign in again.');
+        case 'storage/retry-limit-exceeded':
+          throw Exception('Upload failed after multiple attempts. Please try again.');
+        case 'storage/invalid-checksum':
+          throw Exception('File corrupted during upload. Please try again.');
+        default:
+          throw Exception('Upload failed: ${e.message ?? 'Unknown error'}');
+      }
+    } catch (e) {
+      print('General error uploading image: $e');
+      if (e.toString().contains('timeout')) {
+        throw Exception('Upload timeout. Please check your internet connection and try again.');
+      }
+      throw Exception('Failed to upload image: ${e.toString()}');
+    }
   }
 
   // Check if user profile is complete
   Future<bool> isProfileComplete(String userId) async {
     try {
-      final doc = await _col.doc(userId).get();
-      if (!doc.exists) return false;
+      // First try Firestore
+      final doc = await _col.doc(userId).get().timeout(
+        const Duration(seconds: 10),
+      );
       
-      final data = doc.data()!;
-      return data['profileCompleted'] == true &&
-             data['username'] != null &&
-             data['fullName'] != null &&
-             data['username'].toString().isNotEmpty &&
-             data['fullName'].toString().isNotEmpty;
+      if (doc.exists) {
+        final data = doc.data()!;
+        return data['profileCompleted'] == true &&
+               data['username'] != null &&
+               data['fullName'] != null &&
+               data['username'].toString().isNotEmpty &&
+               data['fullName'].toString().isNotEmpty;
+      }
     } catch (e) {
-      // If Firestore is not available, assume profile is not complete
-      print('Error checking profile completion: $e');
+      print('Firestore not available for profile check: $e');
+    }
+    
+    // Fallback to local storage
+    try {
+      return await LocalStorageService.isProfileCompleted();
+    } catch (e) {
+      print('Error checking local profile completion: $e');
       return false;
     }
   }

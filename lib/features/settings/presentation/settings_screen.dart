@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_constants.dart';
+import '../../../services/local_storage_service.dart';
+import '../../profile/presentation/edit_profile_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -10,241 +12,353 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
-  bool _darkModeEnabled = true;
-  bool _autoPlayEnabled = true;
-  bool _highQualityAudio = false;
-  bool _shareListeningActivity = true;
+  // Local settings state; persisted via SharedPreferences through OfflineUserService's local storage
+  Map<String, dynamic> _settings = {
+    'notifications': {
+      'likes': true,
+      'comments': true,
+      'follows': true,
+      'musicRecommendations': false,
+      'trendingAlerts': true,
+    },
+    'privacy': {
+      'privateAccount': false,
+      'showOnlineStatus': true,
+      'allowTagging': true,
+    },
+    'music': {
+      'autoPlay': true,
+      'highQuality': false,
+      'downloadOverWiFi': true,
+      'showLyrics': true,
+    },
+    'appearance': {
+      'darkMode': true,
+      'colorTheme': 'teal',
+    },
+    'connections': {
+      'spotify': true,
+      'appleMusic': false,
+      'youtubeMusic': true,
+    }
+  };
+
+  bool _loading = true;
+  Map<String, dynamic>? _localProfile;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    // Load profile (for header) and settings (if previously saved)
+    try {
+  // For header, we can still read a locally saved profile (if any)
+  final profile = await LocalStorageService.getUserProfile();
+  final stored = await LocalStorageService.getSettings();
+      if (stored != null) {
+        // Merge with defaults to avoid missing keys
+        _settings = _deepMerge(Map<String, dynamic>.from(_settings), stored);
+      }
+      setState(() {
+        _localProfile = profile;
+        _loading = false;
+      });
+    } catch (_) {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Map<String, dynamic> _deepMerge(Map<String, dynamic> base, Map<String, dynamic> other) {
+    other.forEach((key, value) {
+      if (value is Map && base[key] is Map) {
+        base[key] = _deepMerge(Map<String, dynamic>.from(base[key]), Map<String, dynamic>.from(value));
+      } else {
+        base[key] = value;
+      }
+    });
+    return base;
+  }
+
+  Future<void> _saveSettings() async {
+    await LocalStorageService.saveSettings(_settings);
+  }
+
+  void _handleSettingChange(String category, String key, dynamic value) {
+    setState(() {
+      final cat = Map<String, dynamic>.from(_settings[category] as Map);
+      cat[key] = value;
+      _settings[category] = cat;
+    });
+    _saveSettings();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
-      appBar: _buildAppBar(),
-      body: ListView(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
-        children: [
-          _buildProfileSection(),
-          const SizedBox(height: 24),
-          _buildMusicPlatformsSection(),
-          const SizedBox(height: 24),
-          _buildPreferencesSection(),
-          const SizedBox(height: 24),
-          _buildPrivacySection(),
-          const SizedBox(height: 24),
-          _buildSupportSection(),
-          const SizedBox(height: 24),
-          _buildSignOutButton(),
-        ],
+      appBar: AppBar(
+        backgroundColor: AppColors.primaryBackground,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.primaryText, size: 18),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text('Settings', style: TextStyle(color: AppColors.primaryText, fontWeight: FontWeight.w600)),
       ),
-    );
-  }
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryPurple))
+          : ListView(
+              padding: const EdgeInsets.only(bottom: 24),
+              children: [
+                _buildProfileHeader(),
+                _sectionTitle('Account'),
+                _card(
+                  children: [
+                    _tile(
+                      icon: Icons.person_outline_rounded,
+                      title: 'Edit Profile',
+                      onTap: () async {
+                        final name = (_localProfile?['displayName'] as String?) ?? '';
+                        final username = (_localProfile?['username'] as String?) ?? '';
+                        final bio = (_localProfile?['bio'] as String?) ?? '';
+                        final website = (_localProfile?['website'] as String?) ?? '';
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => EditProfileScreen(
+                              displayName: name,
+                              username: username,
+                              bio: bio,
+                              website: website,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.lock_outline_rounded,
+                      title: 'Privacy & Security',
+                      onTap: () => _snack('Privacy & Security coming soon'),
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.notifications_none_rounded,
+                      title: 'Notifications',
+                      onTap: () => _snack('Notifications coming soon'),
+                    ),
+                  ],
+                ),
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: AppColors.primaryBackground,
-      elevation: 0,
-      title: const Text(
-        'Settings',
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: AppColors.primaryText,
-        ),
-      ),
-      centerTitle: false,
-      leading: IconButton(
-        icon: const Icon(
-          Icons.arrow_back_rounded,
-          color: AppColors.primaryText,
-        ),
-        onPressed: () => Navigator.pop(context),
-      ),
-    );
-  }
+                _sectionTitle('Music'),
+                _card(
+                  children: [
+                    _tile(
+                      icon: Icons.music_note_outlined,
+                      title: 'Music Preferences',
+                      onTap: () => _snack('Music Preferences coming soon'),
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.graphic_eq_rounded,
+                      title: 'Audio Quality',
+                      onTap: () => _snack('Audio Quality coming soon'),
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.download_outlined,
+                      title: 'Downloads',
+                      onTap: () => _snack('Downloads coming soon'),
+                    ),
+                  ],
+                ),
 
-  Widget _buildProfileSection() {
-    return _buildSection(
-      title: 'Profile',
-      children: [
-        _buildSettingsTile(
-          icon: Icons.person_outline_rounded,
-          title: 'Edit Profile',
-          subtitle: 'Update your profile information',
-          onTap: () => _navigateToEditProfile(),
-        ),
-        _buildSettingsTile(
-          icon: Icons.music_note_rounded,
-          title: 'Music Preferences',
-          subtitle: 'Set your favorite genres and artists',
-          onTap: () => _navigateToMusicPreferences(),
-        ),
-        _buildSettingsTile(
-          icon: Icons.visibility_rounded,
-          title: 'Profile Visibility',
-          subtitle: 'Control who can see your profile',
-          onTap: () => _navigateToProfileVisibility(),
-        ),
-      ],
-    );
-  }
+                _sectionTitle('Appearance'),
+                _card(
+                  children: [
+                    _tile(
+                      icon: Icons.palette_outlined,
+                      title: 'Theme & Colors',
+                      onTap: () => _snack('Theme picker coming soon'),
+                    ),
+                    _divider(),
+                    _switchTile(
+                      icon: Icons.dark_mode_outlined,
+                      title: 'Dark Mode',
+                      value: (_settings['appearance'] as Map)['darkMode'] as bool,
+                      onChanged: (v) => _handleSettingChange('appearance', 'darkMode', v),
+                    ),
+                  ],
+                ),
 
-  Widget _buildMusicPlatformsSection() {
-    return _buildSection(
-      title: 'Connected Platforms',
-      children: [
-        _buildPlatformTile(
-          'Spotify',
-          'Connect your Spotify account',
-          'spotify_logo',
-          true,
-          () => _toggleSpotifyConnection(),
-        ),
-        _buildPlatformTile(
-          'Apple Music',
-          'Connect your Apple Music account',
-          'apple_music_logo',
-          false,
-          () => _toggleAppleMusicConnection(),
-        ),
-        _buildPlatformTile(
-          'YouTube Music',
-          'Connect your YouTube Music account',
-          'youtube_music_logo',
-          false,
-          () => _toggleYouTubeMusicConnection(),
-        ),
-        _buildPlatformTile(
-          'SoundCloud',
-          'Connect your SoundCloud account',
-          'soundcloud_logo',
-          true,
-          () => _toggleSoundCloudConnection(),
-        ),
-      ],
-    );
-  }
+                _sectionTitle('Support'),
+                _card(
+                  children: [
+                    _tile(
+                      icon: Icons.help_outline_rounded,
+                      title: 'Help Center',
+                      onTap: () => _snack('Help Center coming soon'),
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.shield_outlined,
+                      title: 'Report a Problem',
+                      onTap: () => _snack('Report issue coming soon'),
+                    ),
+                  ],
+                ),
 
-  Widget _buildPreferencesSection() {
-    return _buildSection(
-      title: 'App Preferences',
-      children: [
-        _buildSwitchTile(
-          icon: Icons.notifications_rounded,
-          title: 'Push Notifications',
-          subtitle: 'Get notified about new music and activity',
-          value: _notificationsEnabled,
-          onChanged: (value) => setState(() => _notificationsEnabled = value),
-        ),
-        _buildSwitchTile(
-          icon: Icons.dark_mode_rounded,
-          title: 'Dark Mode',
-          subtitle: 'Use dark theme',
-          value: _darkModeEnabled,
-          onChanged: (value) => setState(() => _darkModeEnabled = value),
-        ),
-        _buildSwitchTile(
-          icon: Icons.play_arrow_rounded,
-          title: 'Auto-Play',
-          subtitle: 'Automatically play music in posts',
-          value: _autoPlayEnabled,
-          onChanged: (value) => setState(() => _autoPlayEnabled = value),
-        ),
-        _buildSwitchTile(
-          icon: Icons.high_quality_rounded,
-          title: 'High Quality Audio',
-          subtitle: 'Stream music in higher quality',
-          value: _highQualityAudio,
-          onChanged: (value) => setState(() => _highQualityAudio = value),
-        ),
-      ],
-    );
-  }
+                _sectionTitle('Connected Accounts'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    children: [
+                      _connectionCard(
+                        name: 'Spotify',
+                        connected: ((_settings['connections'] as Map)['spotify'] as bool),
+                        color: const Color(0xFF1DB954),
+                        onPressed: () {
+                          final v = !((_settings['connections'] as Map)['spotify'] as bool);
+                          _handleSettingChange('connections', 'spotify', v);
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      _connectionCard(
+                        name: 'Apple Music',
+                        connected: ((_settings['connections'] as Map)['appleMusic'] as bool),
+                        color: Colors.grey,
+                        onPressed: () {
+                          final v = !((_settings['connections'] as Map)['appleMusic'] as bool);
+                          _handleSettingChange('connections', 'appleMusic', v);
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      _connectionCard(
+                        name: 'YouTube Music',
+                        connected: ((_settings['connections'] as Map)['youtubeMusic'] as bool),
+                        color: const Color(0xFFFF3D00),
+                        onPressed: () {
+                          final v = !((_settings['connections'] as Map)['youtubeMusic'] as bool);
+                          _handleSettingChange('connections', 'youtubeMusic', v);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
 
-  Widget _buildPrivacySection() {
-    return _buildSection(
-      title: 'Privacy & Security',
-      children: [
-        _buildSwitchTile(
-          icon: Icons.share_rounded,
-          title: 'Share Listening Activity',
-          subtitle: 'Let others see what you\'re listening to',
-          value: _shareListeningActivity,
-          onChanged: (value) => setState(() => _shareListeningActivity = value),
-        ),
-        _buildSettingsTile(
-          icon: Icons.block_rounded,
-          title: 'Blocked Users',
-          subtitle: 'Manage blocked accounts',
-          onTap: () => _navigateToBlockedUsers(),
-        ),
-        _buildSettingsTile(
-          icon: Icons.security_rounded,
-          title: 'Privacy Settings',
-          subtitle: 'Control your data and privacy',
-          onTap: () => _navigateToPrivacySettings(),
-        ),
-        _buildSettingsTile(
-          icon: Icons.download_rounded,
-          title: 'Download Your Data',
-          subtitle: 'Get a copy of your data',
-          onTap: () => _downloadUserData(),
-        ),
-      ],
-    );
-  }
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _card(
+                    children: [
+                      ListTile(
+                        onTap: _confirmLogout,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+                        title: const Text('Log Out', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.redAccent),
+                      ),
+                    ],
+                  ),
+                ),
 
-  Widget _buildSupportSection() {
-    return _buildSection(
-      title: 'Support & About',
-      children: [
-        _buildSettingsTile(
-          icon: Icons.help_outline_rounded,
-          title: 'Help Center',
-          subtitle: 'Get help and support',
-          onTap: () => _navigateToHelpCenter(),
-        ),
-        _buildSettingsTile(
-          icon: Icons.bug_report_rounded,
-          title: 'Report a Problem',
-          subtitle: 'Let us know about issues',
-          onTap: () => _reportProblem(),
-        ),
-        _buildSettingsTile(
-          icon: Icons.info_outline_rounded,
-          title: 'About',
-          subtitle: 'App version and legal information',
-          onTap: () => _showAboutDialog(),
-        ),
-        _buildSettingsTile(
-          icon: Icons.star_outline_rounded,
-          title: 'Rate App',
-          subtitle: 'Rate us on the App Store',
-          onTap: () => _rateApp(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSection({
-    required String title,
-    required List<Widget> children,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 12),
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primaryText,
+                const SizedBox(height: 16),
+                Center(
+                  child: Column(
+                    children: [
+                      const Text('MusicSocial v1.0.0', style: TextStyle(color: AppColors.mutedText, fontSize: 12)),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 16,
+                        children: const [
+                          Text('Terms of Service', style: TextStyle(color: AppColors.secondaryText, fontSize: 12)),
+                          Text('Privacy Policy', style: TextStyle(color: AppColors.secondaryText, fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
+    );
+  }
+
+  Widget _buildProfileHeader() {
+    final name = (_localProfile?['displayName'] as String?) ?? (FirebaseAuth.instance.currentUser?.displayName ?? 'Your Name');
+    final username = (_localProfile?['username'] as String?) ?? 'your_username';
+    final photo = (_localProfile?['photoURL'] as String?) ?? '';
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.borderColor, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: AppColors.borderColor,
+              backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+              child: photo.isEmpty ? const Icon(Icons.person, color: AppColors.mutedText) : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: const TextStyle(color: AppColors.primaryText, fontWeight: FontWeight.w600)),
+                  Text('@$username', style: const TextStyle(color: AppColors.mutedText, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () async {
+                      final bio = (_localProfile?['bio'] as String?) ?? '';
+                      final website = (_localProfile?['website'] as String?) ?? '';
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => EditProfileScreen(
+                            displayName: name,
+                            username: username,
+                            bio: bio,
+                            website: website,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('View Profile', style: TextStyle(color: AppColors.primaryPurple, fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.mutedText),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Text(
+          title.toUpperCase(),
+          style: const TextStyle(
+            color: AppColors.secondaryText,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
           ),
         ),
-        Container(
+      );
+
+  Widget _card({required List<Widget> children}) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Container(
           decoration: BoxDecoration(
             color: AppColors.cardBackground,
             borderRadius: BorderRadius.circular(12),
@@ -252,414 +366,124 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           child: Column(children: children),
         ),
-      ],
-    );
-  }
+      );
 
-  Widget _buildSettingsTile({
+  Widget _tile({
     required IconData icon,
     required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    Widget? trailing,
-  }) {
-    return ListTile(
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: AppColors.primaryPurple.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: AppColors.primaryPurple, size: 20),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.primaryText,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(fontSize: 12, color: AppColors.secondaryText),
-      ),
-      trailing:
-          trailing ??
-          const Icon(Icons.chevron_right_rounded, color: AppColors.mutedText),
-      onTap: onTap,
-    );
-  }
+    String? subtitle,
+    VoidCallback? onTap,
+  }) => ListTile(
+        onTap: onTap,
+        leading: Icon(icon, color: AppColors.mutedText),
+        title: Text(title, style: const TextStyle(color: AppColors.primaryText, fontWeight: FontWeight.w500)),
+        subtitle: subtitle == null ? null : Text(subtitle, style: const TextStyle(color: AppColors.mutedText)),
+        trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.mutedText, size: 18),
+      );
 
-  Widget _buildSwitchTile({
+  Widget _switchTile({
     required IconData icon,
     required String title,
-    required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
+  }) => ListTile(
+        leading: Icon(icon, color: AppColors.mutedText),
+        title: Text(title, style: const TextStyle(color: AppColors.primaryText, fontWeight: FontWeight.w500)),
+        trailing: Switch(
+          value: value,
+          onChanged: onChanged,
+          activeColor: AppColors.primaryPurple,
+        ),
+      );
+
+  Widget _divider() => const Divider(height: 1, color: AppColors.borderColor);
+
+  Widget _connectionCard({
+    required String name,
+    required bool connected,
+    required Color color,
+    required VoidCallback onPressed,
   }) {
-    return _buildSettingsTile(
-      icon: icon,
-      title: title,
-      subtitle: subtitle,
-      onTap: () => onChanged(!value),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeColor: AppColors.primaryPurple,
-      ),
-    );
-  }
-
-  Widget _buildPlatformTile(
-    String platform,
-    String subtitle,
-    String logoAsset,
-    bool isConnected,
-    VoidCallback onTap,
-  ) {
-    return ListTile(
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: AppColors.primaryPurple.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Icon(
-          Icons.music_note_rounded,
-          color: AppColors.primaryPurple,
-          size: 20,
-        ),
-      ),
-      title: Text(
-        platform,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.primaryText,
-        ),
-      ),
-      subtitle: Text(
-        isConnected ? 'Connected' : subtitle,
-        style: TextStyle(
-          fontSize: 12,
-          color: isConnected ? AppColors.success : AppColors.secondaryText,
-        ),
-      ),
-      trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isConnected ? AppColors.success : AppColors.primaryPurple,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          isConnected ? 'Connected' : 'Connect',
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-      ),
-      onTap: onTap,
-    );
-  }
-
-  Widget _buildSignOutButton() {
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      child: ElevatedButton(
-        onPressed: _showSignOutDialog,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.error.withOpacity(0.1),
-          foregroundColor: AppColors.error,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: AppColors.error.withOpacity(0.3)),
-          ),
-        ),
-        child: const Text(
-          'Sign Out',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderColor, width: 0.5),
       ),
-    );
-  }
-
-  void _navigateToEditProfile() {
-    // Navigate to edit profile screen
-  }
-
-  void _navigateToMusicPreferences() {
-    // Navigate to music preferences screen
-  }
-
-  void _navigateToProfileVisibility() {
-    // Navigate to profile visibility settings
-  }
-
-  void _toggleSpotifyConnection() {
-    // Handle Spotify connection toggle
-    _showConnectionDialog('Spotify');
-  }
-
-  void _toggleAppleMusicConnection() {
-    // Handle Apple Music connection toggle
-    _showConnectionDialog('Apple Music');
-  }
-
-  void _toggleYouTubeMusicConnection() {
-    // Handle YouTube Music connection toggle
-    _showConnectionDialog('YouTube Music');
-  }
-
-  void _toggleSoundCloudConnection() {
-    // Handle SoundCloud connection toggle
-    _showConnectionDialog('SoundCloud');
-  }
-
-  void _navigateToBlockedUsers() {
-    // Navigate to blocked users screen
-  }
-
-  void _navigateToPrivacySettings() {
-    // Navigate to privacy settings screen
-  }
-
-  void _downloadUserData() {
-    // Handle data download request
-    _showInfoDialog(
-      'Data Download',
-      'Your data download request has been received. You will receive an email with your data within 48 hours.',
-    );
-  }
-
-  void _navigateToHelpCenter() {
-    // Navigate to help center
-  }
-
-  void _reportProblem() {
-    // Show problem reporting dialog
-    _showReportDialog();
-  }
-
-  void _showAboutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardBackground,
-        title: const Text(
-          'About Muscta',
-          style: TextStyle(color: AppColors.primaryText),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Version 1.0.0',
-              style: TextStyle(
-                color: AppColors.primaryText,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'A social music platform that connects music lovers around the world.',
-              style: TextStyle(color: AppColors.secondaryText),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '© 2024 Muscta. All rights reserved.',
-              style: TextStyle(color: AppColors.mutedText, fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Close',
-              style: TextStyle(color: AppColors.primaryPurple),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+            child: const Icon(Icons.music_note_rounded, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(color: AppColors.primaryText, fontWeight: FontWeight.w600)),
+                Text(connected ? 'Connected' : 'Not connected', style: const TextStyle(color: AppColors.mutedText, fontSize: 12)),
+              ],
             ),
           ),
+          TextButton(
+            onPressed: onPressed,
+            style: TextButton.styleFrom(
+              foregroundColor: connected ? Colors.redAccent : Colors.white,
+              backgroundColor: connected ? Colors.transparent : AppColors.primaryPurple,
+              side: connected ? const BorderSide(color: Colors.redAccent) : BorderSide.none,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text(connected ? 'Disconnect' : 'Connect'),
+          )
         ],
       ),
     );
   }
 
-  void _rateApp() {
-    // Handle app rating
-    _showInfoDialog(
-      'Rate App',
-      'Thank you for your interest in rating our app! This feature will redirect you to the App Store.',
-    );
-  }
-
-  void _showConnectionDialog(String platform) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardBackground,
-        title: Text(
-          'Connect to $platform',
-          style: const TextStyle(color: AppColors.primaryText),
-        ),
-        content: Text(
-          'This will redirect you to $platform to authorize the connection.',
-          style: const TextStyle(color: AppColors.secondaryText),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.mutedText),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Handle connection logic
-            },
-            child: const Text(
-              'Connect',
-              style: TextStyle(color: AppColors.primaryPurple),
-            ),
-          ),
-        ],
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  void _showInfoDialog(String title, String message) {
-    showDialog(
+  Future<void> _confirmLogout() async {
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardBackground,
-        title: Text(
-          title,
-          style: const TextStyle(color: AppColors.primaryText),
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(color: AppColors.secondaryText),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: AppColors.primaryPurple),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showReportDialog() {
-    final TextEditingController controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardBackground,
-        title: const Text(
-          'Report a Problem',
-          style: TextStyle(color: AppColors.primaryText),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Please describe the issue you\'re experiencing:',
-              style: TextStyle(color: AppColors.secondaryText),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              style: const TextStyle(color: AppColors.primaryText),
-              maxLines: 4,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderSide: const BorderSide(color: AppColors.borderColor),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                hintText: 'Describe the problem...',
-                hintStyle: const TextStyle(color: AppColors.mutedText),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.mutedText),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _showInfoDialog(
-                'Report Sent',
-                'Thank you for your feedback. We\'ll look into this issue.',
-              );
-            },
-            child: const Text(
-              'Send Report',
-              style: TextStyle(color: AppColors.primaryPurple),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSignOutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardBackground,
-        title: const Text(
-          'Sign Out',
-          style: TextStyle(color: AppColors.primaryText),
-        ),
+        title: const Text('Log out of MusicSocial?', style: TextStyle(color: AppColors.primaryText)),
         content: const Text(
-          'Are you sure you want to sign out?',
+          "You'll need to log back in to access your account and continue discovering music.",
           style: TextStyle(color: AppColors.secondaryText),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.mutedText),
-            ),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Handle sign out logic
-              _showInfoDialog(
-                'Signed Out',
-                'You have been successfully signed out.',
-              );
-            },
-            child: const Text(
-              'Sign Out',
-              style: TextStyle(color: AppColors.error),
-            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Colors.redAccent),
+            child: const Text('Log Out'),
           ),
         ],
       ),
     );
+    if (confirm == true) {
+      try {
+        await FirebaseAuth.instance.signOut();
+      } finally {
+        if (mounted) Navigator.of(context).pop();
+      }
+    }
   }
 }
+

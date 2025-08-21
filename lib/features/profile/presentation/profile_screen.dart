@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_images.dart';
 import '../../../services/user/user_service.dart';
+import '../../../services/offline_user_service.dart';
+import '../../../shared/widgets/placeholder_widget.dart';
 import 'edit_profile_screen.dart';
+import '../../settings/presentation/settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -15,11 +19,11 @@ class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  // Demo fallback data used when neither online nor offline data available
   final _demoProfile = ProfileData(
     username: 'your_username',
     name: 'Your Name',
-    avatar:
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
+    avatar: AppImages.defaultProfileImage, // may be empty -> uses placeholder
     bio:
         'Music enthusiast 🎵 | Rock & Indie lover 🎸 | Always discovering new sounds ✨',
     website: 'yourmusic.com',
@@ -31,57 +35,50 @@ class _ProfileScreenState extends State<ProfileScreen>
     isVerified: true,
   );
 
-  final List<ProfilePost> _posts = const [
+  final List<ProfilePost> _posts = [
     ProfilePost(
       id: 1,
-      image:
-          'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[0],
       likes: 243,
       type: 'image',
     ),
     ProfilePost(
       id: 2,
-      image:
-          'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[1],
       likes: 567,
       type: 'music',
     ),
     ProfilePost(
       id: 3,
-      image:
-          'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[2],
       likes: 189,
       type: 'image',
     ),
     ProfilePost(
       id: 4,
-      image:
-          'https://images.unsplash.com/photo-1571330735066-03aaa9429d89?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[3],
       likes: 432,
       type: 'music',
     ),
     ProfilePost(
       id: 5,
-      image:
-          'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[4],
       likes: 678,
       type: 'image',
     ),
     ProfilePost(
       id: 6,
-      image:
-          'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[5],
       likes: 324,
       type: 'music',
     ),
   ];
 
-  final List<ProfilePlaylist> _playlists = const [
+  final List<ProfilePlaylist> _playlists = [
     ProfilePlaylist(
       id: 1,
       name: 'Road Trip Vibes',
-      cover:
-          'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=300&h=300&fit=crop',
+      cover: AppImages.albumPlaceholders[6],
       trackCount: 45,
       isPublic: true,
     ),
@@ -89,7 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       id: 2,
       name: 'Late Night Jazz',
       cover:
-          'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&h=300&fit=crop',
+          'AppImages.getRandomAlbumPlaceholder()',
       trackCount: 32,
       isPublic: false,
     ),
@@ -97,7 +94,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       id: 3,
       name: 'Workout Energy',
       cover:
-          'https://images.unsplash.com/photo-1571330735066-03aaa9429d89?w=300&h=300&fit=crop',
+          'AppImages.getRandomAlbumPlaceholder()',
       trackCount: 28,
       isPublic: true,
     ),
@@ -105,7 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       id: 4,
       name: 'Sunday Morning',
       cover:
-          'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
+          'AppImages.getRandomAlbumPlaceholder()',
       trackCount: 21,
       isPublic: true,
     ),
@@ -128,22 +125,26 @@ class _ProfileScreenState extends State<ProfileScreen>
     return StreamBuilder<Map<String, dynamic>?>(
       stream: UserService().currentUserStream(),
       builder: (context, snap) {
-        final data = snap.data;
-        final profile = ProfileData(
-          username: (data?['username'] as String?) ?? _demoProfile.username,
-          name: (data?['displayName'] as String?) ?? _demoProfile.name,
-          avatar: (data?['photoURL'] as String?) ?? _demoProfile.avatar,
-          bio: (data?['bio'] as String?) ?? _demoProfile.bio,
-          website: (data?['website'] as String?) ?? _demoProfile.website,
-          posts: (data?['posts'] as int?) ?? _demoProfile.posts,
-          followers: (data?['followers'] as int?) ?? _demoProfile.followers,
-          following: (data?['following'] as int?) ?? _demoProfile.following,
-          genres: (data?['genres'] as List?)?.cast<String>() ?? _demoProfile.genres,
-          topArtists: (data?['topArtists'] as List?)?.cast<String>() ?? _demoProfile.topArtists,
-          isVerified: (data?['verified'] as bool?) ?? _demoProfile.isVerified,
-        );
+        // If online data is missing, try offline once
+        return FutureBuilder<Map<String, dynamic>?>(
+          future: snap.data == null ? OfflineUserService.getCurrentUserProfile() : Future.value(null),
+          builder: (context, offlineSnap) {
+            final data = snap.data ?? offlineSnap.data;
+            final profile = ProfileData(
+              username: (data?['username'] as String?) ?? _demoProfile.username,
+              name: (data?['displayName'] as String?) ?? _demoProfile.name,
+              avatar: (data?['photoURL'] as String?) ?? _demoProfile.avatar,
+              bio: (data?['bio'] as String?) ?? _demoProfile.bio,
+              website: (data?['website'] as String?) ?? _demoProfile.website,
+              posts: (data?['posts'] as int?) ?? _demoProfile.posts,
+              followers: (data?['followers'] as int?) ?? _demoProfile.followers,
+              following: (data?['following'] as int?) ?? _demoProfile.following,
+              genres: (data?['genres'] as List?)?.cast<String>() ?? _demoProfile.genres,
+              topArtists: (data?['topArtists'] as List?)?.cast<String>() ?? _demoProfile.topArtists,
+              isVerified: (data?['verified'] as bool?) ?? _demoProfile.isVerified,
+            );
 
-        return Scaffold(
+            return Scaffold(
           backgroundColor: AppColors.primaryBackground,
           appBar: AppBar(
             backgroundColor: AppColors.primaryBackground,
@@ -157,6 +158,16 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ),
             actions: [
+              IconButton(
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+                  if (mounted) setState(() {});
+                },
+                icon: const Icon(Icons.settings_rounded, color: AppColors.primaryText, size: 22),
+                tooltip: 'Settings',
+              ),
               IconButton(
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
@@ -193,6 +204,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             ],
           ),
         );
+          },
+        );
       },
     );
   }
@@ -210,18 +223,17 @@ class _ProfileScreenState extends State<ProfileScreen>
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 80,
-                    height: 80,
+                    padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: AppColors.primaryPurple.withValues(alpha: 0.2),
                         width: 4,
                       ),
-                      image: DecorationImage(
-                        image: NetworkImage(profile.avatar),
-                        fit: BoxFit.cover,
-                      ),
+                    ),
+                    child: ProfilePlaceholder(
+                      size: 76,
+                      imageUrl: profile.avatar,
                     ),
                   ),
                   if (profile.isVerified)
@@ -548,11 +560,9 @@ class _ProfileScreenState extends State<ProfileScreen>
             // image
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: Image.network(
-                post.image,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
+              child: AlbumPlaceholder(
+                size: 200, // not used, fills parent
+                imageUrl: post.image,
               ),
             ),
             // overlay center on tap/hover (mobile we'll keep subtle bottom badge)
@@ -617,11 +627,13 @@ class _ProfileScreenState extends State<ProfileScreen>
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  p.cover,
+                child: SizedBox(
                   width: 48,
                   height: 48,
-                  fit: BoxFit.cover,
+                  child: AlbumPlaceholder(
+                    size: 48,
+                    imageUrl: p.cover,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),

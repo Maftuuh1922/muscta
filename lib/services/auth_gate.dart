@@ -5,9 +5,28 @@ import '../core/constants/app_colors.dart';
 import '../features/profile/presentation/complete_profile_screen.dart';
 import 'login/login_screen.dart';
 import 'user/user_service.dart';
+import 'offline_user_service.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
+
+  // Check profile completion using both online and offline methods
+  Future<bool> _checkProfileComplete(String userId) async {
+    try {
+      // Try online first with timeout
+      return await UserService().isProfileComplete(userId).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          // Fallback to offline check
+          print('Online check timeout, using offline check');
+          return OfflineUserService.isProfileCompleteOffline(userId);
+        },
+      );
+    } catch (e) {
+      print('Error checking profile online, using offline: $e');
+      return await OfflineUserService.isProfileCompleteOffline(userId);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +43,7 @@ class AuthGate extends StatelessWidget {
         if (user != null) {
           // Check if profile is complete
           return FutureBuilder<bool>(
-            future: UserService().isProfileComplete(user.uid),
+            future: _checkProfileComplete(user.uid),
             builder: (context, profileSnapshot) {
               if (profileSnapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(

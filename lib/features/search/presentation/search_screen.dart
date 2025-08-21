@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_images.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -20,8 +21,7 @@ class _SearchScreenState extends State<SearchScreen> {
       artist: 'Glass Animals',
       plays: '2.1M',
       change: '+15%',
-      cover:
-          'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
+      cover: AppImages.albumPlaceholders[0],
     ),
     TrendingMusic(
       id: '2',
@@ -29,8 +29,7 @@ class _SearchScreenState extends State<SearchScreen> {
       artist: 'Harry Styles',
       plays: '1.8M',
       change: '+8%',
-      cover:
-          'https://images.unsplash.com/photo-1571330735066-03aaa9429d89?w=300&h=300&fit=crop',
+      cover: AppImages.albumPlaceholders[1],
     ),
     TrendingMusic(
       id: '3',
@@ -38,8 +37,7 @@ class _SearchScreenState extends State<SearchScreen> {
       artist: 'Steve Lacy',
       plays: '1.5M',
       change: '+23%',
-      cover:
-          'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&h=300&fit=crop',
+      cover: AppImages.albumPlaceholders[2],
     ),
   ];
 
@@ -57,8 +55,7 @@ class _SearchScreenState extends State<SearchScreen> {
       id: '1',
       username: 'indie_alice',
       name: 'Alice Johnson',
-      avatar:
-          'https://images.unsplash.com/photo-1494790108755-2616b332c6c3?w=100&h=100&fit=crop&crop=face',
+      avatar: AppImages.profilePlaceholders[0],
       followers: '12.5K',
       isFollowing: false,
       bio: 'Indie rock enthusiast 🎸',
@@ -67,8 +64,7 @@ class _SearchScreenState extends State<SearchScreen> {
       id: '2',
       username: 'jazz_master',
       name: 'Marcus Williams',
-      avatar:
-          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face',
+      avatar: AppImages.profilePlaceholders[1],
       followers: '8.2K',
       isFollowing: false,
       bio: 'Jazz pianist & composer 🎹',
@@ -77,8 +73,7 @@ class _SearchScreenState extends State<SearchScreen> {
       id: '3',
       username: 'electronic_beats',
       name: 'Sophia Chen',
-      avatar:
-          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=face',
+      avatar: AppImages.profilePlaceholders[2],
       followers: '15.7K',
       isFollowing: true,
       bio: 'Electronic music producer ⚡',
@@ -88,38 +83,32 @@ class _SearchScreenState extends State<SearchScreen> {
   final List<ExploreGridItem> _exploreGrid = [
     ExploreGridItem(
       id: '1',
-      image:
-          'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[3],
       likes: '2.1K',
     ),
     ExploreGridItem(
       id: '2',
-      image:
-          'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[4],
       likes: '1.8K',
     ),
     ExploreGridItem(
       id: '3',
-      image:
-          'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[5],
       likes: '3.2K',
     ),
     ExploreGridItem(
       id: '4',
-      image:
-          'https://images.unsplash.com/photo-1571330735066-03aaa9429d89?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[6],
       likes: '987',
     ),
     ExploreGridItem(
       id: '5',
-      image:
-          'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[7],
       likes: '1.5K',
     ),
     ExploreGridItem(
       id: '6',
-      image:
-          'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
+      image: AppImages.albumPlaceholders[8],
       likes: '756',
     ),
   ];
