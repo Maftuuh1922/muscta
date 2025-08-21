@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
 import '../local_storage_service.dart';
 
 class UserService {
@@ -28,9 +29,15 @@ class UserService {
           profileImageUrl = await _uploadProfileImage(userId, profileImage);
           print('Profile image uploaded successfully: $profileImageUrl');
         } catch (imageError) {
-          print('Image upload failed, continuing without image: $imageError');
-          // Continue without image - don't fail the entire profile creation
-          profileImageUrl = null;
+          print('Image upload failed, saving locally: $imageError');
+          // Save image locally as fallback
+          try {
+            profileImageUrl = await _saveImageLocally(userId, profileImage);
+            print('Image saved locally: $profileImageUrl');
+          } catch (localError) {
+            print('Local image save failed: $localError');
+            profileImageUrl = null;
+          }
         }
       }
 
@@ -358,5 +365,26 @@ class UserService {
     };
 
     await ref.set(data, SetOptions(merge: true));
+  }
+  
+  Future<String> _saveImageLocally(String userId, File imageFile) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final localDir = Directory('${appDir.path}/profile_images');
+      if (!await localDir.exists()) {
+        await localDir.create(recursive: true);
+      }
+      
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'profile_${userId}_$timestamp.jpg';
+      final localFile = File('${localDir.path}/$fileName');
+      
+      await imageFile.copy(localFile.path);
+      print('Image saved locally to: ${localFile.path}');
+      return localFile.path;
+    } catch (e) {
+      print('Error saving image locally: $e');
+      throw Exception('Failed to save image locally: $e');
+    }
   }
 }

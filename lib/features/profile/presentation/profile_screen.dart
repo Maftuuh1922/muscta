@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_images.dart';
 import '../../../services/user/user_service.dart';
@@ -18,6 +17,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _forceRefresh = false; // Add this to force refresh after edit
 
   // Demo fallback data used when neither online nor offline data available
   final _demoProfile = ProfileData(
@@ -125,10 +125,21 @@ class _ProfileScreenState extends State<ProfileScreen>
     return StreamBuilder<Map<String, dynamic>?>(
       stream: UserService().currentUserStream(),
       builder: (context, snap) {
-        // If online data is missing, try offline once
+        // If online data is missing, try offline once OR force refresh after edit
         return FutureBuilder<Map<String, dynamic>?>(
-          future: snap.data == null ? OfflineUserService.getCurrentUserProfile() : Future.value(null),
+          future: snap.data == null || _forceRefresh 
+              ? OfflineUserService.getCurrentUserProfile() 
+              : Future.value(null),
           builder: (context, offlineSnap) {
+            // Reset force refresh flag
+            if (_forceRefresh) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() => _forceRefresh = false);
+                }
+              });
+            }
+            
             final data = snap.data ?? offlineSnap.data;
             final profile = ProfileData(
               username: (data?['username'] as String?) ?? _demoProfile.username,
@@ -167,17 +178,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                 },
                 icon: const Icon(Icons.settings_rounded, color: AppColors.primaryText, size: 22),
                 tooltip: 'Settings',
-              ),
-              IconButton(
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                },
-                icon: const Icon(
-                  Icons.logout_rounded,
-                  color: AppColors.primaryText,
-                  size: 22,
-                ),
-                tooltip: 'Logout',
               ),
             ],
           ),
@@ -301,11 +301,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     username: profile.username,
                                     bio: profile.bio,
                                     website: profile.website,
+                                    profileImageUrl: profile.avatar,
+                                    genres: profile.genres,
                                   ),
                                 ),
                               );
                               if (changed == true && mounted) {
-                                setState(() {});
+                                setState(() {
+                                  _forceRefresh = true; // Force refresh from offline storage
+                                });
                               }
                             },
                             style: ElevatedButton.styleFrom(

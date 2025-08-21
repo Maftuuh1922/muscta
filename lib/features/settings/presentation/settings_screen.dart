@@ -127,6 +127,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         final username = (_localProfile?['username'] as String?) ?? '';
                         final bio = (_localProfile?['bio'] as String?) ?? '';
                         final website = (_localProfile?['website'] as String?) ?? '';
+                        final profileImageUrl = (_localProfile?['profileImageUrl'] as String?) ?? '';
+                        final genres = (_localProfile?['genres'] as List?)?.cast<String>();
+                        
                         await Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => EditProfileScreen(
@@ -134,6 +137,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               username: username,
                               bio: bio,
                               website: website,
+                              profileImageUrl: profileImageUrl,
+                              genres: genres,
                             ),
                           ),
                         );
@@ -318,8 +323,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 4),
                   GestureDetector(
                     onTap: () async {
+                      final name = (_localProfile?['displayName'] as String?) ?? (FirebaseAuth.instance.currentUser?.displayName ?? 'Your Name');
+                      final username = (_localProfile?['username'] as String?) ?? 'your_username';
                       final bio = (_localProfile?['bio'] as String?) ?? '';
                       final website = (_localProfile?['website'] as String?) ?? '';
+                      final profileImageUrl = (_localProfile?['profileImageUrl'] as String?) ?? '';
+                      final genres = (_localProfile?['genres'] as List?)?.cast<String>();
+                      
                       await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => EditProfileScreen(
@@ -327,6 +337,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             username: username,
                             bio: bio,
                             website: website,
+                            profileImageUrl: profileImageUrl,
+                            genres: genres,
                           ),
                         ),
                       );
@@ -477,11 +489,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+    
     if (confirm == true) {
       try {
+        // Clear local storage
+        await LocalStorageService.clearUserProfile();
+        
+        // Sign out from Firebase
         await FirebaseAuth.instance.signOut();
-      } finally {
-        if (mounted) Navigator.of(context).pop();
+        
+        // Navigate to login screen and clear all routes
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/', // This goes to AuthGate which will redirect to LoginScreen
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error logging out: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
       }
     }
   }

@@ -8,12 +8,16 @@ import 'main_navigation.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'services/auth_gate.dart';
+import 'services/deep_link/deep_link_handler.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (!kIsWeb) {
     await Firebase.initializeApp();
+    
+    // Initialize deep link handler for Spotify OAuth
+    DeepLinkHandler.initialize();
   } else {
     // TODO: tampilkan fallback UI atau pesan "Jalankan di Android"
   }
@@ -39,10 +43,15 @@ class MusctaApp extends StatelessWidget {
       title: AppConstants.appName,
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
-      home: const AuthGate(),
+      initialRoute: '/',
       routes: {
+        '/': (context) => const AuthGate(),
+        '/home': (context) => const MainNavigationScreen(),
         '/complete-profile': (context) => const CompleteProfileScreen(),
-        '/main': (context) => const MainNavigationScreen(),
+      },
+      onGenerateRoute: (settings) {
+        // Handle unknown routes by redirecting to AuthGate
+        return MaterialPageRoute(builder: (_) => const AuthGate());
       },
     );
   }

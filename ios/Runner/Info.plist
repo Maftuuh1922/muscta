@@ -45,5 +45,25 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Deep linking support for Spotify OAuth -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>muscta.oauth.callback</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>muscta</string>
+			</array>
+		</dict>
+	</array>
+	
+	<!-- Network access permissions -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
