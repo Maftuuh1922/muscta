@@ -4,13 +4,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SpotifyService {
-  static const String clientId = 'b5a13e69c34a4e259f2b89b09a2b9532';
-  static const String clientSecret = 'fa522b90ae0a4abb8f4112c132de92d1';
+  // Values provided by the user (Spotify Dashboard)
+  static const String clientId = '8ba68d2ba63241daa853c44ec9dc5670';
+  static const String clientSecret = '265454da071140ab8f1d9e94e891aa15';
   static const String redirectUri = 'muscta://callback';
   static const String scopes = 'user-read-recently-played user-top-read playlist-read-private user-library-read user-read-currently-playing';
   
   static String? _accessToken;
-  static DateTime? _tokenExpiry;
+  // Token expiry is tracked in SharedPreferences; no in-memory field needed
   
   // Check if user is connected to Spotify
   static Future<bool> isConnected() async {
@@ -37,19 +38,36 @@ class SpotifyService {
   
   // Connect to Spotify
   static Future<void> connectSpotify() async {
-    final authUrl = 'https://accounts.spotify.com/authorize'
-        '?client_id=$clientId'
-        '&response_type=code'
-        '&redirect_uri=${Uri.encodeComponent(redirectUri)}'
-        '&scope=${Uri.encodeComponent(scopes)}'
-        '&show_dialog=true';
-    
-    final uri = Uri.parse(authUrl);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      throw Exception('Could not launch Spotify authorization');
+    // Build URI safely using Uri.https to avoid encoding issues
+    final uri = Uri.https(
+      'accounts.spotify.com',
+      '/authorize',
+      {
+        'client_id': clientId,
+        'response_type': 'code',
+        'redirect_uri': redirectUri,
+        'scope': scopes,
+        'show_dialog': 'true',
+      },
+    );
+
+    // Try multiple launch modes; some devices/browsers report false negatives
+    final attempts = <LaunchMode>[
+      LaunchMode.externalApplication,
+      LaunchMode.platformDefault,
+      LaunchMode.inAppWebView,
+    ];
+
+    Object? lastError;
+    for (final mode in attempts) {
+      try {
+        final ok = await launchUrl(uri, mode: mode);
+        if (ok) return;
+      } catch (e) {
+        lastError = e;
+      }
     }
+    throw Exception('Could not launch Spotify authorization. Url=$uri Error=$lastError');
   }
   
   // Handle callback and get access token
@@ -274,7 +292,6 @@ class SpotifyService {
     await prefs.remove('spotify_refresh_token');
     await prefs.remove('spotify_token_expiry');
     _accessToken = null;
-    _tokenExpiry = null;
     print('Spotify disconnected');
   }
   

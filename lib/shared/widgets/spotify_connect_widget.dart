@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../services/spotify/spotify_service.dart';
+import '../../../services/deep_link/deep_link_handler.dart';
 
 class SpotifyConnectWidget extends StatefulWidget {
   final Function(List<String> topArtists, List<Map<String, dynamic>> topTracks)? onDataLoaded;
@@ -25,6 +26,13 @@ class _SpotifyConnectWidgetState extends State<SpotifyConnectWidget> {
   void initState() {
     super.initState();
     _checkSpotifyConnection();
+    // Listen for deep link event when Spotify connect completes
+    DeepLinkHandler.onEvent.listen((event) async {
+      if (event == 'spotify_connected' && mounted) {
+        setState(() => _isSpotifyConnected = true);
+        await _loadSpotifyData();
+      }
+    });
   }
 
   Future<void> _checkSpotifyConnection() async {

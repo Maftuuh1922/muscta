@@ -1,10 +1,11 @@
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../services/post/post_service.dart';
 import '../../chat/presentation/chat_screen.dart';
-import '../../post/presentation/create_post_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:just_audio/just_audio.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,6 +18,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   String? _currentlyPlaying;
   late AnimationController _marqueeController;
+  late final AudioPlayer _player;
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration>? _positionSub;
+  Duration _progress = Duration.zero;
+  Duration _clipLength = Duration.zero;
+  final Map<String, GlobalKey> _postCardKeys = {};
 
   @override
   void initState() {
@@ -25,32 +32,64 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(seconds: 8),
     )..repeat();
+
+    _player = AudioPlayer();
+    _playerStateSub = _player.playerStateStream.listen((state) {
+      final completed = state.processingState == ProcessingState.completed;
+      if (completed) {
+        // Reset when a clip finishes
+        if (mounted) {
+          setState(() {
+            _currentlyPlaying = null;
+            _progress = Duration.zero;
+            _clipLength = Duration.zero;
+          });
+        }
+        _player.stop();
+      }
+    });
+
+    _positionSub = _player.positionStream.listen((pos) {
+      if (!mounted) return;
+      setState(() {
+        _progress = pos;
+      });
+    });
+
+    _scrollController.addListener(_handleScrollPause);
   }
 
   @override
   void dispose() {
     _marqueeController.dispose();
+  _playerStateSub?.cancel();
+    _positionSub?.cancel();
+    _player.dispose();
+    _scrollController.removeListener(_handleScrollPause);
     super.dispose();
+  }
+
+  void _handleScrollPause() {
+    if (_currentlyPlaying == null) return;
+    final key = _postCardKeys[_currentlyPlaying];
+    if (key == null) return;
+    final context = key.currentContext;
+    if (context == null) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return;
+    final offset = box.localToGlobal(Offset.zero);
+    final size = box.size;
+    final screenHeight = MediaQuery.of(this.context).size.height;
+    if (offset.dy + size.height < 0 || offset.dy > screenHeight) {
+      _player.pause();
+      setState(() {});
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CreatePostScreen()),
-          );
-          if (result == true) {
-            // Post created successfully, refresh UI if needed
-            setState(() {});
-          }
-        },
-        backgroundColor: AppColors.primaryPurple,
-        child: const Icon(Icons.add_rounded, color: Colors.white),
-      ),
       body: Column(
         children: [
           _buildTopBar(),
@@ -84,35 +123,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.music_note_outlined, color: AppColors.mutedText, size: 64),
-                        const SizedBox(height: 16),
-                        const Text(
+                      children: const [
+                        Icon(Icons.music_note_outlined, color: AppColors.mutedText, size: 64),
+                        SizedBox(height: 16),
+                        Text(
                           'No posts yet',
                           style: TextStyle(color: AppColors.primaryText, fontSize: 18, fontWeight: FontWeight.w600),
                         ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Be the first to share your music!',
+                        SizedBox(height: 8),
+                        Text(
+                          'Follow accounts or tap + below to post',
                           style: TextStyle(color: AppColors.mutedText, fontSize: 14),
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton(
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const CreatePostScreen()),
-                            );
-                            if (result == true) {
-                              setState(() {});
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryPurple,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: const Text('Create Post'),
                         ),
                       ],
                     ),
@@ -193,7 +214,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildPostCard(Map<String, dynamic> postData) {
+    final postId = postData['id'] as String? ?? '';
+    _postCardKeys.putIfAbsent(postId, () => GlobalKey());
     return Container(
+      key: _postCardKeys[postId],
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
@@ -346,8 +370,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildMusicInfo(Map<String, dynamic> postData) {
     final postId = postData['id'] as String;
     final isPlaying = _currentlyPlaying == postId;
-    final albumCoverUrl = postData['albumCoverUrl'] as String? ?? 
+    final music = _extractMusic(postData);
+  final albumCoverUrl = music['albumCover'] as String? ?? postData['albumCoverUrl'] as String? ??
         'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop';
+    final clipDurationMs = music['clipDurationMs'] as int?;
+  final hasPreview = ((music['previewUrl'] as String?) ?? postData['previewUrl'] as String?) != null;
+    final progress = (isPlaying && _clipLength.inMilliseconds > 0)
+        ? (_progress.inMilliseconds / _clipLength.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
     
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -411,19 +441,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   right: -2,
                   bottom: -2,
                   child: GestureDetector(
-                    onTap: () => _handlePlayPause(postId),
+          onTap: () => _handlePlayPauseForPost(postData),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       width: 24,
                       height: 24,
                       decoration: BoxDecoration(
-                        color: isPlaying ? AppColors.success : const Color(0xFF8E8E93),
+            color: !hasPreview
+              ? const Color(0xFF3A3A3C)
+              : (isPlaying ? AppColors.success : const Color(0xFF8E8E93)),
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: const Color(0xFF1C1C1E),
                           width: 2,
                         ),
-                        boxShadow: isPlaying ? [
+            boxShadow: isPlaying && hasPreview ? [
                           BoxShadow(
                             color: AppColors.success.withOpacity(0.6),
                             blurRadius: 12,
@@ -434,8 +466,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 150),
                         child: Icon(
-                          isPlaying ? Icons.pause : Icons.play_arrow,
-                          color: Colors.black,
+              !hasPreview
+                ? Icons.block
+                : (isPlaying ? Icons.pause : Icons.play_arrow),
+              color: !hasPreview ? const Color(0xFF8E8E93) : Colors.black,
                           size: 14,
                           key: ValueKey(isPlaying),
                         ),
@@ -452,7 +486,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    postData['musicTitle'] as String? ?? 'Unknown Track',
+          (music['title'] as String?) ?? postData['musicTitle'] as String? ?? 'Unknown Track',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 14,
@@ -463,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    postData['musicArtist'] as String? ?? 'Unknown Artist',
+          (music['artist'] as String?) ?? postData['musicArtist'] as String? ?? 'Unknown Artist',
                     style: const TextStyle(
                       color: Color(0xFF8E8E93),
                       fontSize: 12,
@@ -471,13 +505,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (isPlaying && _clipLength.inMilliseconds > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, right: 8),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 3,
+                        backgroundColor: const Color(0xFF2C2C2E),
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.success),
+                      ),
+                    ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
             // Duration
             Text(
-              _formatDuration(postData['musicDuration'] as String?),
+        clipDurationMs != null
+          ? _formatMs(clipDurationMs)
+          : _formatDuration((music['duration'] as String?) ?? postData['musicDuration'] as String?),
               style: const TextStyle(
                 color: Color(0xFF8E8E93),
                 fontSize: 11,
@@ -523,8 +569,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildInteractionButtons(Map<String, dynamic> postData) {
     final postId = postData['id'] as String;
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    final likes = (postData['likes'] as List<dynamic>?) ?? [];
-    final isLiked = currentUserId != null && likes.contains(currentUserId);
+  final likedBy = (postData['likedBy'] as List<dynamic>?) ?? (postData['likes'] is List ? List<dynamic>.from(postData['likes']) : <dynamic>[]);
+  final isLiked = currentUserId != null && likedBy.contains(currentUserId);
     
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -613,8 +659,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildEngagementInfo(Map<String, dynamic> postData) {
-    final likes = (postData['likes'] as List<dynamic>?) ?? [];
-    final likesCount = likes.length;
+  final likesField = postData['likes'];
+  final likesCount = likesField is int ? likesField : (likesField is List ? likesField.length : 0);
     final caption = postData['caption'] as String? ?? '';
     final userData = postData['userData'] as Map<String, dynamic>? ?? {};
     final username = userData['username'] as String? ?? 'Unknown User';
@@ -724,14 +770,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // TODO: Show bottom sheet with more options
   }
 
-  void _handlePlayPause(String postId) {
-    setState(() {
-      if (_currentlyPlaying == postId) {
-        _currentlyPlaying = null;
-      } else {
-        _currentlyPlaying = postId;
+  Future<void> _handlePlayPauseForPost(Map<String, dynamic> postData) async {
+    final postId = postData['id'] as String?;
+    if (postId == null) return;
+    final music = _extractMusic(postData);
+    final previewUrl = (music['previewUrl'] as String?) ?? postData['previewUrl'] as String?;
+    if (previewUrl == null || previewUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No preview available for this track')),
+        );
       }
-    });
+      return;
+    }
+
+    if (_currentlyPlaying == postId) {
+      if (_player.playing) {
+        await _player.pause();
+      } else {
+        await _player.play();
+      }
+      setState(() {});
+      return;
+    }
+
+    // Switching to a different post/track
+    try {
+      final startMs = (music['clipStartMs'] as int?) ?? 0;
+      final durMs = (music['clipDurationMs'] as int?) ?? 15000;
+      final start = Duration(milliseconds: startMs);
+      final end = Duration(milliseconds: startMs + durMs);
+      final source = ClippingAudioSource(
+        start: start,
+        end: end,
+        child: AudioSource.uri(Uri.parse(previewUrl)),
+      );
+      await _player.setAudioSource(source);
+      await _player.play();
+
+      if (mounted) {
+        setState(() {
+          _currentlyPlaying = postId;
+          _clipLength = Duration(milliseconds: durMs);
+          _progress = Duration.zero;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Playback error: $e')),
+        );
+      }
+    }
+  }
+
+  Map<String, dynamic> _extractMusic(Map<String, dynamic> postData) {
+    final m = postData['music'];
+    if (m is Map<String, dynamic>) return m;
+    // Fallback for demo data or legacy shape
+    return {
+      'title': postData['musicTitle'],
+      'artist': postData['musicArtist'],
+      'duration': postData['musicDuration'],
+      'albumCover': postData['albumCoverUrl'],
+      'previewUrl': postData['previewUrl'],
+      'clipStartMs': postData['clipStartMs'],
+      'clipDurationMs': postData['clipDurationMs'],
+    }..removeWhere((key, value) => value == null);
+  }
+
+  String _formatMs(int ms) {
+    final d = Duration(milliseconds: ms);
+    final m = d.inMinutes.remainder(60).toString().padLeft(1, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   List<Map<String, dynamic>> _getDemoData() {

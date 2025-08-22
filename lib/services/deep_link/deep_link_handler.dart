@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/services.dart';
 import '../spotify/spotify_service.dart';
 
 class DeepLinkHandler {
   static const MethodChannel _channel = MethodChannel('deep_link_handler');
   static bool _isInitialized = false;
+  static final StreamController<String> _eventController = StreamController<String>.broadcast();
+
+  static Stream<String> get onEvent => _eventController.stream;
 
   static void initialize() {
     if (_isInitialized) return;
@@ -43,7 +47,11 @@ class DeepLinkHandler {
         
         if (code != null) {
           print('Spotify OAuth success, handling callback...');
-          await SpotifyService.handleCallback(code);
+          final ok = await SpotifyService.handleCallback(code);
+          if (ok) {
+            // Notify listeners that Spotify connection is established
+            _eventController.add('spotify_connected');
+          }
         }
       }
     } catch (e) {

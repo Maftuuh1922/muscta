@@ -7,8 +7,8 @@ class AppColors {
   static const Color surfaceBackground = Color(0xFF1A1A1A);
 
   // Main Brand Colors
-  static const Color primary = Color(0xFF00D4AA); // Teal/hijau tosca
-  static const Color secondary = Color(0xFFFF8C42); // Orange
+  static const Color primary = Color(0xFFFFD700); // Gold
+  static const Color secondary = Color(0xFFFFA500); // Orange Gold
   static const Color accent = Color(0xFF8B5CF6); // Purple
   
   // Legacy purple support (untuk kompatibilitas)
@@ -18,13 +18,13 @@ class AppColors {
 
   // Text Colors
   static const Color primaryText = Color(0xFFFFFFFF);
-  static const Color secondaryText = Color(0xFFB0B0B0);
-  static const Color mutedText = Color(0xFF262626); // Abu sedang
+  static const Color secondaryText = Color(0xFFCCCCCC); // Lighter for better visibility
+  static const Color mutedText = Color(0xFF888888); // Lighter muted text
 
   // Status Colors
-  static const Color success = Color(0xFF00D4AA); // Sama dengan primary
+  static const Color success = Color(0xFFFFD700); // Gold
   static const Color error = Color(0xFFFF4757); // Merah destructive
-  static const Color warning = Color(0xFFFF8C42); // Sama dengan secondary
+  static const Color warning = Color(0xFFFFA500); // Orange Gold
   static const Color info = Color(0xFF8B5CF6); // Purple accent
 
   // Additional Colors
@@ -33,8 +33,8 @@ class AppColors {
   static const Color dividerColor = Color(0xFF262626);
 
   // Chart Colors
-  static const Color chart1 = Color(0xFF00D4AA); // Teal
-  static const Color chart2 = Color(0xFFFF8C42); // Orange
+  static const Color chart1 = Color(0xFFFFD700); // Gold
+  static const Color chart2 = Color(0xFFFFA500); // Orange Gold
   static const Color chart3 = Color(0xFF8B5CF6); // Purple
   static const Color chart4 = Color(0xFFFF4757); // Merah
   static const Color chart5 = Color(0xFFFFC107); // Kuning
@@ -59,17 +59,17 @@ class AppColors {
 
   // Social colors
   static const Color likeColor = Color(0xFFFF4757); // Merah
-  static const Color followButtonColor = primary; // Teal
+  static const Color followButtonColor = primary; // Gold
   static const Color followingButtonColor = Color(0xFF262626);
 
   // Bottom navigation
   static const Color navBarBackground = Color(0xFF1A1A1A);
-  static const Color navBarActive = primary; // Teal
-  static const Color navBarInactive = Color(0xFF262626);
+  static const Color navBarActive = primary; // Gold
+  static const Color navBarInactive = Color(0xFF666666); // Lighter gray for better visibility
 
   // Search bar
   static const Color searchBarBackground = Color(0xFF262626);
 
   // Online status
-  static const Color onlineIndicator = success; // Teal
+  static const Color onlineIndicator = success; // Gold
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_images.dart';
 import '../../../services/user/user_service.dart';
 import '../../../services/offline_user_service.dart';
 import '../../../shared/widgets/placeholder_widget.dart';
@@ -19,94 +18,24 @@ class _ProfileScreenState extends State<ProfileScreen>
   late TabController _tabController;
   bool _forceRefresh = false; // Add this to force refresh after edit
 
-  // Demo fallback data used when neither online nor offline data available
-  final _demoProfile = ProfileData(
-    username: 'your_username',
-    name: 'Your Name',
-    avatar: AppImages.defaultProfileImage, // may be empty -> uses placeholder
-    bio:
-        'Music enthusiast 🎵 | Rock & Indie lover 🎸 | Always discovering new sounds ✨',
-    website: 'yourmusic.com',
-    posts: 127,
-    followers: 2847,
-    following: 892,
-    genres: const ['Rock', 'Indie', 'Alternative', 'Pop Punk'],
-    topArtists: const ['Queen', 'Arctic Monkeys', 'The Strokes', 'Radiohead'],
-    isVerified: true,
+  // Default fallback data when no profile data is available
+  final _defaultProfile = ProfileData(
+    username: 'username',
+    name: 'User Name',
+    avatar: '',
+    bio: 'Welcome to my music profile!',
+    website: '',
+    posts: 0,
+    followers: 0,
+    following: 0,
+    genres: const [],
+    topArtists: const [],
+    isVerified: false,
   );
 
-  final List<ProfilePost> _posts = [
-    ProfilePost(
-      id: 1,
-      image: AppImages.albumPlaceholders[0],
-      likes: 243,
-      type: 'image',
-    ),
-    ProfilePost(
-      id: 2,
-      image: AppImages.albumPlaceholders[1],
-      likes: 567,
-      type: 'music',
-    ),
-    ProfilePost(
-      id: 3,
-      image: AppImages.albumPlaceholders[2],
-      likes: 189,
-      type: 'image',
-    ),
-    ProfilePost(
-      id: 4,
-      image: AppImages.albumPlaceholders[3],
-      likes: 432,
-      type: 'music',
-    ),
-    ProfilePost(
-      id: 5,
-      image: AppImages.albumPlaceholders[4],
-      likes: 678,
-      type: 'image',
-    ),
-    ProfilePost(
-      id: 6,
-      image: AppImages.albumPlaceholders[5],
-      likes: 324,
-      type: 'music',
-    ),
-  ];
+  final List<ProfilePost> _posts = [];
 
-  final List<ProfilePlaylist> _playlists = [
-    ProfilePlaylist(
-      id: 1,
-      name: 'Road Trip Vibes',
-      cover: AppImages.albumPlaceholders[6],
-      trackCount: 45,
-      isPublic: true,
-    ),
-    ProfilePlaylist(
-      id: 2,
-      name: 'Late Night Jazz',
-      cover:
-          'AppImages.getRandomAlbumPlaceholder()',
-      trackCount: 32,
-      isPublic: false,
-    ),
-    ProfilePlaylist(
-      id: 3,
-      name: 'Workout Energy',
-      cover:
-          'AppImages.getRandomAlbumPlaceholder()',
-      trackCount: 28,
-      isPublic: true,
-    ),
-    ProfilePlaylist(
-      id: 4,
-      name: 'Sunday Morning',
-      cover:
-          'AppImages.getRandomAlbumPlaceholder()',
-      trackCount: 21,
-      isPublic: true,
-    ),
-  ];
+  final List<ProfilePlaylist> _playlists = [];
 
   @override
   void initState() {
@@ -142,17 +71,17 @@ class _ProfileScreenState extends State<ProfileScreen>
             
             final data = snap.data ?? offlineSnap.data;
             final profile = ProfileData(
-              username: (data?['username'] as String?) ?? _demoProfile.username,
-              name: (data?['displayName'] as String?) ?? _demoProfile.name,
-              avatar: (data?['photoURL'] as String?) ?? _demoProfile.avatar,
-              bio: (data?['bio'] as String?) ?? _demoProfile.bio,
-              website: (data?['website'] as String?) ?? _demoProfile.website,
-              posts: (data?['posts'] as int?) ?? _demoProfile.posts,
-              followers: (data?['followers'] as int?) ?? _demoProfile.followers,
-              following: (data?['following'] as int?) ?? _demoProfile.following,
-              genres: (data?['genres'] as List?)?.cast<String>() ?? _demoProfile.genres,
-              topArtists: (data?['topArtists'] as List?)?.cast<String>() ?? _demoProfile.topArtists,
-              isVerified: (data?['verified'] as bool?) ?? _demoProfile.isVerified,
+              username: (data?['username'] as String?) ?? _defaultProfile.username,
+              name: (data?['displayName'] as String?) ?? _defaultProfile.name,
+              avatar: (data?['photoURL'] as String?) ?? _defaultProfile.avatar,
+              bio: (data?['bio'] as String?) ?? _defaultProfile.bio,
+              website: (data?['website'] as String?) ?? _defaultProfile.website,
+              posts: (data?['posts'] as int?) ?? _defaultProfile.posts,
+              followers: (data?['followers'] as int?) ?? _defaultProfile.followers,
+              following: (data?['following'] as int?) ?? _defaultProfile.following,
+              genres: (data?['genres'] as List?)?.cast<String>() ?? _defaultProfile.genres,
+              topArtists: (data?['topArtists'] as List?)?.cast<String>() ?? _defaultProfile.topArtists,
+              isVerified: (data?['verified'] as bool?) ?? _defaultProfile.isVerified,
             );
 
             return Scaffold(
@@ -176,8 +105,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                   );
                   if (mounted) setState(() {});
                 },
-                icon: const Icon(Icons.settings_rounded, color: AppColors.primaryText, size: 22),
-                tooltip: 'Settings',
+                icon: const Icon(Icons.menu_rounded, color: AppColors.primaryText, size: 24),
+                tooltip: 'Menu',
               ),
             ],
           ),
@@ -227,8 +156,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: AppColors.primaryPurple.withValues(alpha: 0.2),
-                        width: 4,
+                        color: AppColors.primary.withOpacity(0.3),
+                        width: 3,
                       ),
                     ),
                     child: ProfilePlaceholder(
@@ -244,7 +173,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         width: 24,
                         height: 24,
                         decoration: BoxDecoration(
-                          color: AppColors.primaryPurple,
+                          color: AppColors.primary,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: AppColors.primaryBackground,
@@ -313,8 +242,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                               }
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryPurple,
-                              foregroundColor: AppColors.primaryText,
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.black, // Black text on gold background
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
@@ -378,7 +307,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     '🔗 ${profile.website}',
                     style: const TextStyle(
                       fontSize: 14,
-                      color: AppColors.primaryPurple,
+                      color: AppColors.primary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -401,7 +330,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   children: const [
                     Icon(
                       Icons.music_note_rounded,
-                      color: AppColors.primaryPurple,
+                      color: AppColors.primary,
                       size: 16,
                     ),
                     SizedBox(width: 8),
@@ -527,26 +456,52 @@ class _ProfileScreenState extends State<ProfileScreen>
       margin: const EdgeInsets.only(top: 12),
       child: TabBar(
         controller: _tabController,
-        indicatorColor: AppColors.primaryPurple,
-        labelColor: AppColors.primaryPurple,
+        indicatorColor: AppColors.primary, // Changed to gold
+        labelColor: AppColors.primary, // Changed to gold
         unselectedLabelColor: AppColors.mutedText,
-        labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.normal,
-        ),
+        indicatorSize: TabBarIndicatorSize.label,
+        dividerColor: Colors.transparent, // Remove the white separator line
         tabs: const [
-          Tab(icon: Icon(Icons.grid_on_rounded, size: 18), text: 'Posts'),
-          Tab(
-            icon: Icon(Icons.queue_music_rounded, size: 18),
-            text: 'Playlists',
-          ),
+          Tab(icon: Icon(Icons.grid_view_rounded, size: 24)),
+          Tab(icon: Icon(Icons.library_music_rounded, size: 24)),
         ],
       ),
     );
   }
 
   Widget _buildPostsGrid() {
+    if (_posts.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.photo_library_outlined,
+              size: 64,
+              color: AppColors.mutedText,
+            ),
+            SizedBox(height: 16),
+            Text(
+              'No posts yet',
+              style: TextStyle(
+                fontSize: 16,
+                color: AppColors.mutedText,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Share your music moments',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.secondaryText,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return GridView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       physics: const NeverScrollableScrollPhysics(),
@@ -614,6 +569,38 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildPlaylistsList() {
+    if (_playlists.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.queue_music_outlined,
+              size: 64,
+              color: AppColors.mutedText,
+            ),
+            SizedBox(height: 16),
+            Text(
+              'No playlists yet',
+              style: TextStyle(
+                fontSize: 16,
+                color: AppColors.mutedText,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Create your first playlist',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.secondaryText,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       physics: const NeverScrollableScrollPhysics(),

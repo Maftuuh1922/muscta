@@ -10,12 +10,16 @@ class PostService {
 
   // Create new music post
   Future<String> createPost({
-    required String musicTitle,
-    required String musicArtist,
-    required String musicAlbumCover,
-    required String musicDuration,
+    String? musicTitle,
+    String? musicArtist,
+    String? musicAlbumCover,
+    String? musicDuration,
     required String caption,
     XFile? imageFile,
+    String? spotifyId,
+    String? previewUrl,
+    int? clipStartMs,
+    int? clipDurationMs,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('User not authenticated');
@@ -28,18 +32,28 @@ class PostService {
       imageUrl = await _uploadImage(postId, imageFile);
     }
 
+    final musicMap = () {
+      // Build music map only when at least one music-related field exists
+      if (musicTitle == null && musicArtist == null && musicAlbumCover == null && musicDuration == null && spotifyId == null && previewUrl == null && clipStartMs == null && clipDurationMs == null) return null;
+      final m = <String, dynamic>{};
+      if (musicTitle != null) m['title'] = musicTitle;
+      if (musicArtist != null) m['artist'] = musicArtist;
+      if (musicAlbumCover != null) m['albumCover'] = musicAlbumCover;
+      if (musicDuration != null) m['duration'] = musicDuration;
+      if (spotifyId != null) m['spotifyId'] = spotifyId;
+      if (previewUrl != null) m['previewUrl'] = previewUrl;
+      if (clipStartMs != null) m['clipStartMs'] = clipStartMs;
+      if (clipDurationMs != null) m['clipDurationMs'] = clipDurationMs;
+      return m;
+    }();
+
     final postData = {
       'id': postId,
       'userId': user.uid,
       'userEmail': user.email,
       'userDisplayName': user.displayName ?? 'Unknown User',
       'userPhotoURL': user.photoURL,
-      'music': {
-        'title': musicTitle,
-        'artist': musicArtist,
-        'albumCover': musicAlbumCover,
-        'duration': musicDuration,
-      },
+      if (musicMap != null) 'music': musicMap,
       'caption': caption,
       'imageUrl': imageUrl,
       'likes': 0,
@@ -80,6 +94,18 @@ class PostService {
         for (var doc in snap.docs) {
           final data = doc.data();
           data['id'] = doc.id;
+
+          // Convert timestamps to DateTime for UI convenience
+          try {
+            final createdAt = data['createdAt'];
+            if (createdAt != null && createdAt is Timestamp) {
+              data['createdAt'] = createdAt.toDate();
+            }
+            final updatedAt = data['updatedAt'];
+            if (updatedAt != null && updatedAt is Timestamp) {
+              data['updatedAt'] = updatedAt.toDate();
+            }
+          } catch (_) {}
           
           // Get user data
           if (data['userId'] != null) {

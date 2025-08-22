@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../services/local_storage_service.dart';
+import '../../../services/user/user_service.dart';
 import '../../profile/presentation/edit_profile_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -293,9 +295,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildProfileHeader() {
-    final name = (_localProfile?['displayName'] as String?) ?? (FirebaseAuth.instance.currentUser?.displayName ?? 'Your Name');
-    final username = (_localProfile?['username'] as String?) ?? 'your_username';
-    final photo = (_localProfile?['photoURL'] as String?) ?? '';
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Container(
@@ -305,51 +304,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.borderColor, width: 0.5),
         ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: AppColors.borderColor,
-              backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
-              child: photo.isEmpty ? const Icon(Icons.person, color: AppColors.mutedText) : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: const TextStyle(color: AppColors.primaryText, fontWeight: FontWeight.w600)),
-                  Text('@$username', style: const TextStyle(color: AppColors.mutedText, fontSize: 12)),
-                  const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: () async {
-                      final name = (_localProfile?['displayName'] as String?) ?? (FirebaseAuth.instance.currentUser?.displayName ?? 'Your Name');
-                      final username = (_localProfile?['username'] as String?) ?? 'your_username';
-                      final bio = (_localProfile?['bio'] as String?) ?? '';
-                      final website = (_localProfile?['website'] as String?) ?? '';
-                      final profileImageUrl = (_localProfile?['profileImageUrl'] as String?) ?? '';
-                      final genres = (_localProfile?['genres'] as List?)?.cast<String>();
-                      
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => EditProfileScreen(
-                            displayName: name,
-                            username: username,
-                            bio: bio,
-                            website: website,
-                            profileImageUrl: profileImageUrl,
-                            genres: genres,
-                          ),
-                        ),
-                      );
-                    },
-                    child: const Text('View Profile', style: TextStyle(color: AppColors.primaryPurple, fontSize: 12, fontWeight: FontWeight.w600)),
+        child: StreamBuilder<Map<String, dynamic>?>(
+          stream: UserService().currentUserStream(),
+          builder: (context, snapshot) {
+            final userData = snapshot.data;
+            final name = userData?['displayName'] as String? ?? 
+                         userData?['fullName'] as String? ?? 
+                         FirebaseAuth.instance.currentUser?.displayName ?? 
+                         'Your Name';
+            final username = userData?['username'] as String? ?? 'your_username';
+            final photo = userData?['photoURL'] as String? ?? '';
+
+            return Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppColors.borderColor,
+                  backgroundImage: _getImageProvider(photo),
+                  child: photo.isEmpty ? const Icon(Icons.person, color: AppColors.mutedText) : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: const TextStyle(color: AppColors.primaryText, fontWeight: FontWeight.w600)),
+                      Text('@$username', style: const TextStyle(color: AppColors.mutedText, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => EditProfileScreen(
+                                displayName: name,
+                                username: username,
+                                bio: userData?['bio'] as String? ?? '',
+                                website: userData?['website'] as String? ?? '',
+                                profileImageUrl: photo,
+                                genres: (userData?['genres'] as List?)?.cast<String>(),
+                              ),
+                            ),
+                          );
+                        },
+                        child: const Text('View Profile', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.mutedText),
-          ],
+                ),
+                const Icon(Icons.chevron_right_rounded, color: AppColors.mutedText),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -516,6 +521,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }
     }
+  }
+
+  ImageProvider? _getImageProvider(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return null;
+    }
+    
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return NetworkImage(imageUrl);
+    }
+
+    // Support file:// URIs
+    if (imageUrl.startsWith('file://')) {
+      try {
+        final file = File.fromUri(Uri.parse(imageUrl));
+        if (file.existsSync()) return FileImage(file);
+      } catch (_) {}
+    }
+
+    // Support absolute filesystem paths
+    if (imageUrl.startsWith('/')) {
+      final file = File(imageUrl);
+      if (file.existsSync()) return FileImage(file);
+    }
+
+    return null;
   }
 }
 

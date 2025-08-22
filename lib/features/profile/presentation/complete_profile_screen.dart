@@ -8,6 +8,8 @@ import '../../../services/offline_user_service.dart';
 import '../../../services/firebase_test.dart';
 import '../../../services/auth_gate.dart';
 import '../../../shared/widgets/spotify_connect_widget.dart';
+import '../../../services/spotify/spotify_service.dart';
+import '../../../services/deep_link/deep_link_handler.dart';
 
 class CompleteProfileScreen extends StatefulWidget {
   const CompleteProfileScreen({super.key});
@@ -24,6 +26,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   
   File? _selectedImage;
   bool _isLoading = false;
+  bool _spotifyConnected = false;
   
   // Music preferences from Spotify
   List<String> _selectedGenres = [];
@@ -31,16 +34,44 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   
   final ImagePicker _imagePicker = ImagePicker();
 
+  // Available music genres (same as edit profile)
+  final List<String> _availableGenres = [
+    'Rock', 'Pop', 'Hip Hop', 'Jazz', 'Classical', 'Electronic',
+    'Country', 'R&B', 'Indie', 'Alternative', 'Metal', 'Folk',
+    'Reggae', 'Blues', 'Punk', 'Funk', 'Soul', 'Disco'
+  ];
+
   @override
   void initState() {
     super.initState();
     _initializeUserData();
+  _checkSpotifyEarly();
+    // Listen for deep link spotify_connected event
+    DeepLinkHandler.onEvent.listen((event) async {
+      if (event == 'spotify_connected' && mounted) {
+        setState(() => _spotifyConnected = true);
+        await _loadGenresFromSpotify();
+      }
+    });
     
     // Test Firebase connections on debug mode
     if (const bool.fromEnvironment('dart.vm.product') == false) {
       FirebaseTestService.testFirebaseConnections();
       FirebaseTestService.testImageUpload();
     }
+  }
+
+  Future<void> _checkSpotifyEarly() async {
+    try {
+      final connected = await SpotifyService.isConnected();
+      if (!mounted) return;
+      setState(() {
+        _spotifyConnected = connected;
+      });
+      if (connected) {
+        await _loadGenresFromSpotify();
+      }
+    } catch (_) {}
   }
 
   void _initializeUserData() {
@@ -51,9 +82,54 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     }
   }
 
-  void _onSpotifyDataLoaded(List<String> topArtists, List<Map<String, dynamic>> topTracks) {
+  void _onSpotifyDataLoaded(List<String> topArtists, List<Map<String, dynamic>> topTracks) async {
     setState(() {
       _selectedTopArtists = topArtists;
+      _spotifyConnected = true;
+    });
+    await _loadGenresFromSpotify();
+  }
+
+  Future<void> _loadGenresFromSpotify() async {
+    try {
+      final artists = await SpotifyService.getTopArtists(limit: 20);
+      final Map<String, int> genreCount = {};
+      for (final a in artists) {
+        final gs = (a['genres'] as List?)?.cast<String>() ?? const <String>[];
+        for (final g in gs) {
+          genreCount[g.toLowerCase()] = (genreCount[g.toLowerCase()] ?? 0) + 1;
+        }
+      }
+      if (genreCount.isEmpty) return;
+      // Map Spotify genres to our available list (case-insensitive)
+      final Map<String, int> mapped = {};
+      for (final entry in genreCount.entries) {
+        final match = _availableGenres.firstWhere(
+          (ag) => ag.toLowerCase() == entry.key,
+          orElse: () => '',
+        );
+        if (match.isNotEmpty) {
+          mapped[match] = (mapped[match] ?? 0) + entry.value;
+        }
+      }
+      if (mapped.isEmpty) return;
+      final sorted = mapped.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      setState(() {
+        _selectedGenres = sorted.map((e) => e.key).take(5).toList();
+      });
+    } catch (e) {
+      // Silent fail; user can still pick manually
+    }
+  }
+
+  void _toggleGenre(String genre) {
+    setState(() {
+      if (_selectedGenres.contains(genre)) {
+        _selectedGenres.remove(genre);
+      } else if (_selectedGenres.length < 5) {
+        _selectedGenres.add(genre);
+      }
     });
   }
 
@@ -198,6 +274,10 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                     _buildForm(),
                     const SizedBox(height: 32),
                     
+                    // Music Preferences Section
+                    _buildMusicPreferencesSection(),
+                    const SizedBox(height: 32),
+                    
                     // Spotify Connection Widget
                     SpotifyConnectWidget(
                       onDataLoaded: _onSpotifyDataLoaded,
@@ -212,7 +292,19 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
             // Complete Profile Button
             Container(
               padding: const EdgeInsets.all(20),
-              child: _buildCompleteButton(),
+              child: Column(
+                children: [
+                  if (!_spotifyConnected)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Harus connect ke Spotify untuk lanjut',
+                        style: TextStyle(color: AppColors.mutedText, fontSize: 12),
+                      ),
+                    ),
+                  _buildCompleteButton(),
+                ],
+              ),
             ),
           ],
         ),
@@ -261,7 +353,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Set up your music profile to get started',
+                      'Set up your music profile and preferences',
                       style: TextStyle(
                         fontSize: 14,
                         color: AppColors.mutedText,
@@ -352,7 +444,14 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 : FirebaseAuth.instance.currentUser?.photoURL != null
                     ? CircleAvatar(
                         radius: 58,
-                        backgroundImage: NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!),
+                        backgroundImage: _getImageProvider(FirebaseAuth.instance.currentUser!.photoURL!),
+                        child: _getImageProvider(FirebaseAuth.instance.currentUser!.photoURL!) == null
+                            ? const Icon(
+                                Icons.person,
+                                size: 40,
+                                color: AppColors.primary,
+                              )
+                            : null,
                       )
                     : const Icon(
                         Icons.add_a_photo_rounded,
@@ -431,7 +530,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _isLoading ? null : _completeProfile,
+  onPressed: (_isLoading || !_spotifyConnected) ? null : _completeProfile,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
@@ -461,13 +560,108 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                   ),
                 ],
               )
-            : const Text(
-                'Complete Profile',
-                style: TextStyle(
+            : Text(
+                _spotifyConnected ? 'Complete Profile' : 'Connect Spotify terlebih dulu',
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, Color iconColor) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 24, 0, 16),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: iconColor),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primaryText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMusicPreferencesSection() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.borderColor.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader('Music Preferences', Icons.music_note, AppColors.secondary),
+          const Text(
+            'Favorite Genres (Select up to 5)',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppColors.primaryText,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _availableGenres.map((genre) {
+              final isSelected = _selectedGenres.contains(genre);
+              return GestureDetector(
+                onTap: () => _toggleGenre(genre),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? AppColors.primary : AppColors.borderColor,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        genre,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : AppColors.primaryText,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (isSelected) ...[
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.check,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Selected: ${_selectedGenres.length}/5',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.mutedText,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -478,5 +672,23 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     _bioController.dispose();
     _fullNameController.dispose();
     super.dispose();
+  }
+
+  ImageProvider? _getImageProvider(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) return null;
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return NetworkImage(imageUrl);
+    }
+    if (imageUrl.startsWith('file://')) {
+      try {
+        final file = File.fromUri(Uri.parse(imageUrl));
+        if (file.existsSync()) return FileImage(file);
+      } catch (_) {}
+    }
+    if (imageUrl.startsWith('/')) {
+      final file = File(imageUrl);
+      if (file.existsSync()) return FileImage(file);
+    }
+    return null;
   }
 }
