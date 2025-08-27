@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:photo_manager/photo_manager.dart';
+import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../services/post/post_service.dart';
 import '../widgets/music_picker.dart';
@@ -22,20 +24,28 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   String? _error;
   MusicSelection? _selectedMusic;
   int _currentPage = 0;
+  double _clipStart = 0.0;
+  bool _addAiLabel = false;
+  
+  // Gallery related variables
+  List<AssetEntity> _mediaList = [];
+  List<AssetPathEntity> _albums = [];
+  AssetPathEntity? _selectedAlbum;
+  String _selectedPostType = 'POSTINGAN';
+  bool _multiSelect = false;
+  List<AssetEntity> _selectedAssets = [];
   
   // Additional Instagram-like features
   bool _enableComments = true;
   bool _showLikeCount = true;
   String? _selectedLocation;
   List<String> _taggedUsers = [];
+  String _audience = 'Pengikut';
 
   @override
   void initState() {
     super.initState();
-    // Auto-open image picker on screen load for Instagram-like flow
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _pickImage();
-    });
+    _loadGallery();
   }
 
   @override
@@ -45,45 +55,46 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    
-    // Show bottom sheet for image source selection
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: AppColors.cardBackground,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => _ImageSourceSheet(),
-    );
-    
-    if (source == null) {
-      if (mounted && _selectedImage == null) {
-        Navigator.pop(context);
-      }
+  Future<void> _loadGallery() async {
+    final PermissionState ps = await PhotoManager.requestPermissionExtend();
+    if (!ps.isAuth) {
+      // Tampilkan dialog ke user untuk mengaktifkan permission di settings
+      PhotoManager.openSetting();
       return;
     }
-    
-    final image = await picker.pickImage(
-      source: source,
-      maxWidth: 1080,
-      maxHeight: 1350,
-      imageQuality: 85,
+
+    final albums = await PhotoManager.getAssetPathList(
+      type: RequestType.image,
+      onlyAll: false,
     );
     
-    if (image != null) {
+    if (albums.isNotEmpty) {
+      final recentAlbum = albums.first;
+      final media = await recentAlbum.getAssetListPaged(
+        page: 0,
+        size: 100,
+      );
+      
       setState(() {
-        _selectedImage = image;
-        _currentPage = 1; // Move to edit page
+        _albums = albums;
+        _selectedAlbum = recentAlbum;
+        _mediaList = media;
+      });
+    }
+  }
+
+  Future<void> _selectImage(AssetEntity asset) async {
+    final file = await asset.file;
+    if (file != null) {
+      setState(() {
+        _selectedImage = XFile(file.path);
+        _currentPage = 1;
       });
       _pageController.animateToPage(
         1,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-    } else if (_selectedImage == null && mounted) {
-      Navigator.pop(context);
     }
   }
 
@@ -105,16 +116,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         imageFile: _selectedImage,
         spotifyId: _selectedMusic?.spotifyId,
         previewUrl: _selectedMusic?.previewUrl,
-        clipStartMs: _selectedMusic?.clipStartMs,
-        clipDurationMs: _selectedMusic?.clipDurationMs,
+        clipStartMs: (_clipStart * 1000).toInt(),
+        clipDurationMs: 30000,
       );
-      
-      // TODO: Simpan data tambahan ke database terpisah jika diperlukan
-      // Contoh: location, taggedUsers, commentsEnabled, likesVisible
-      // Bisa disimpan di collection/table terpisah atau update PostService
 
       if (mounted) {
-        // Show success animation before closing
         _showSuccessAnimation();
       }
     } catch (e) {
@@ -165,25 +171,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
     
     Future.delayed(const Duration(seconds: 1), () {
-      Navigator.of(context).pop(); // Close dialog
-      Navigator.of(context).pop(true); // Close screen
+      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.primaryBackground,
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: Column(
           children: [
-            // Custom App Bar
             _buildAppBar(),
-            
-            // Progress Indicator
             if (_currentPage > 0) _buildProgressIndicator(),
-            
-            // Main Content
             Expanded(
               child: PageView(
                 controller: _pageController,
@@ -194,13 +195,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   });
                 },
                 children: [
-                  // Page 0: Image Selection (auto-triggered)
-                  Container(),
-                  
-                  // Page 1: Edit & Filters
+                  _buildGalleryPage(),
                   _buildEditPage(),
-                  
-                  // Page 2: Caption & Details
                   _buildDetailsPage(),
                 ],
               ),
@@ -214,12 +210,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget _buildAppBar() {
     return Container(
       height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () {
-              if (_currentPage > 1) {
+          GestureDetector(
+            onTap: () {
+              if (_currentPage > 0) {
                 _pageController.previousPage(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
@@ -228,27 +224,77 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 Navigator.pop(context);
               }
             },
-            icon: Icon(
-              _currentPage > 1 ? Icons.arrow_back : Icons.close,
-              color: AppColors.primaryText,
+            child: Icon(
+              _currentPage == 1 ? Icons.close : (_currentPage > 1 ? Icons.arrow_back : Icons.close),
+              color: Colors.white,
+              size: 24,
             ),
           ),
           Expanded(
             child: Text(
               _currentPage == 0
-                  ? 'Postingan Baru'
+                  ? 'Postingan baru'
                   : _currentPage == 1
-                  ? 'Edit'
-                  : 'Bagikan',
+                  ? ''
+                  : 'Postingan baru',
               style: const TextStyle(
-                color: AppColors.primaryText,
+                color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
             ),
           ),
-          if (_currentPage == 1)
+          if (_currentPage == 0)
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _multiSelect = !_multiSelect;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white54),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _multiSelect ? Icons.check_box : Icons.crop_square,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'PILIH BEBERAPA',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    // Open camera
+                    _openCamera();
+                  },
+                  child: Icon(
+                    Icons.camera_alt_outlined,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ],
+            )
+          else if (_currentPage == 1)
             TextButton(
               onPressed: () {
                 _pageController.nextPage(
@@ -265,32 +311,306 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
               ),
             )
-          else if (_currentPage == 2)
-            TextButton(
-              onPressed: _loading ? null : _createPost,
-              child: _loading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.primary,
-                      ),
-                    )
-                  : Text(
-                      'Bagikan',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                      ),
-                    ),
-            )
           else
             const SizedBox(width: 48),
         ],
       ),
     );
+  }
+
+  Widget _buildGalleryPage() {
+    return Column(
+      children: [
+        // Album selector
+        if (_selectedAlbum != null)
+          Container(
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _showAlbumPicker,
+                    child: Row(
+                      children: [
+                        Text(
+                          _selectedAlbum!.name,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        
+        // Image Grid
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 2,
+              mainAxisSpacing: 2,
+              childAspectRatio: 1,
+            ),
+            itemCount: _mediaList.length,
+            itemBuilder: (context, index) {
+              final asset = _mediaList[index];
+              final isSelected = _selectedAssets.contains(asset);
+              
+              return GestureDetector(
+                onTap: () {
+                  if (_multiSelect) {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedAssets.remove(asset);
+                      } else {
+                        _selectedAssets.add(asset);
+                      }
+                    });
+                  } else {
+                    _selectImage(asset);
+                  }
+                },
+                child: Stack(
+                  children: [
+                    // Image
+                    AssetEntityImage(
+                      asset,
+                      width: 200,
+                      height: 200,
+                      fit: BoxFit.cover,
+                      isOriginal: false,
+                    ),
+                    
+                    // Video indicator
+                    if (asset.type == AssetType.video)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Icon(
+                          Icons.play_circle_filled,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    
+                    // Selection indicator
+                    if (_multiSelect)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppColors.primary : Colors.white.withOpacity(0.3),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
+                            ),
+                          ),
+                          child: isSelected
+                              ? Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 16,
+                                )
+                              : null,
+                        ),
+                      ),
+                    
+                    // Selection overlay
+                    if (_multiSelect && isSelected)
+                      Container(
+                        color: AppColors.primary.withOpacity(0.3),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        
+        // Bottom tab bar
+        Container(
+          height: 80,
+          color: Colors.black,
+          child: Column(
+            children: [
+              Container(
+                height: 1,
+                color: Colors.grey[800],
+              ),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildBottomTab('POSTINGAN', _selectedPostType == 'POSTINGAN'),
+                    _buildBottomTab('CERITA', _selectedPostType == 'CERITA'),
+                    _buildBottomTab('REEL', _selectedPostType == 'REEL'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomTab(String title, bool isSelected) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedPostType = title;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isSelected ? Colors.white : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey[400],
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAlbumPicker() async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.black,
+      builder: (context) {
+        return Container(
+          height: 300,
+          child: Column(
+            children: [
+              Container(
+                height: 4,
+                width: 40,
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Text(
+                'Pilih Album',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _albums.length,
+                  itemBuilder: (context, index) {
+                    final album = _albums[index];
+                    return ListTile(
+                      leading: FutureBuilder<List<AssetEntity>>(
+                        future: album.getAssetListRange(start: 0, end: 1),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: AssetEntityImage(
+                                snapshot.data!.first,
+                                width: 50,
+                                height: 50,
+                                fit: BoxFit.cover,
+                              ),
+                            );
+                          }
+                          return Container(
+                            width: 50,
+                            height: 50,
+                            color: Colors.grey[800],
+                            child: Icon(Icons.image, color: Colors.grey[600]),
+                          );
+                        },
+                      ),
+                      title: Text(
+                        album.name,
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      subtitle: FutureBuilder<int>(
+                        future: album.assetCountAsync,
+                        builder: (context, snapshot) {
+                          return Text(
+                            '${snapshot.data ?? 0}',
+                            style: TextStyle(color: Colors.grey[400]),
+                          );
+                        },
+                      ),
+                      onTap: () async {
+                        final media = await album.getAssetListPaged(
+                          page: 0,
+                          size: 100,
+                        );
+                        setState(() {
+                          _selectedAlbum = album;
+                          _mediaList = media;
+                        });
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openCamera() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1080,
+      maxHeight: 1350,
+      imageQuality: 85,
+    );
+    
+    if (image != null) {
+      setState(() {
+        _selectedImage = image;
+        _currentPage = 1;
+      });
+      _pageController.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
   Widget _buildProgressIndicator() {
@@ -299,7 +619,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: List.generate(
-          2,
+          3,
           (index) => Expanded(
             child: Container(
               height: 3,
@@ -322,7 +642,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     
     return Column(
       children: [
-        // Image Preview
         Expanded(
           child: Container(
             margin: const EdgeInsets.all(16),
@@ -340,68 +659,85 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               borderRadius: BorderRadius.circular(12),
               child: Image.file(
                 File(_selectedImage!.path),
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
               ),
             ),
           ),
         ),
         
-        // Music Selection
-        Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              if (_selectedMusic != null) ...[
+        if (_selectedMusic != null)
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
                 _buildSelectedMusicCard(),
-                const SizedBox(height: 12),
-              ],
-              
-              // Add Music Button
-              GestureDetector(
-                onTap: () async {
-                  final selection = await showMusicPicker(context);
-                  if (selection != null) {
-                    setState(() {
-                      _selectedMusic = selection;
-                    });
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.cardBackground,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.borderColor),
+                    gradient: LinearGradient(
+                      colors: [Colors.yellow, Colors.purple],
+                      begin: Alignment.bottomLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
-                    children: [
-                      Icon(
-                        Icons.music_note,
-                        color: AppColors.primary,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _selectedMusic == null
-                              ? 'Tambahkan musik'
-                              : 'Ganti musik',
-                          style: TextStyle(
-                            color: AppColors.primaryText,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.chevron_right,
-                        color: AppColors.mutedText,
-                      ),
-                    ],
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: List.generate(10, (index) => Container(
+                      width: 4,
+                      height: 10 + (index % 5 * 6),
+                      color: Colors.white,
+                    )),
                   ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Text('0', style: TextStyle(color: AppColors.primaryText)),
+                    Expanded(
+                      child: Slider(
+                        value: _clipStart,
+                        min: 0,
+                        max: (_selectedMusic!.durationMs / 1000) - 30,
+                        onChanged: (value) {
+                          setState(() {
+                            _clipStart = value;
+                          });
+                        },
+                        activeColor: Colors.pink,
+                        inactiveColor: Colors.grey,
+                        thumbColor: Colors.white,
+                      ),
+                    ),
+                    Icon(Icons.stop_circle, color: Colors.white),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        
+        Container(
+          height: 60,
+          decoration: BoxDecoration(
+            color: AppColors.primaryBackground,
+            border: Border(top: BorderSide(color: AppColors.borderColor)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildTabButton('Audio', Icons.music_note, () async {
+                final selection = await showMusicPicker(context);
+                if (selection != null) {
+                  setState(() {
+                    _selectedMusic = selection;
+                  });
+                }
+              }),
+              _buildTabButton('Teks', Icons.text_fields, () {}),
+              _buildTabButton('Overlay', Icons.layers, () {}),
+              _buildTabButton('Filter', Icons.filter, () {}),
+              _buildTabButton('Edit', Icons.edit, () {}),
             ],
           ),
         ),
@@ -409,14 +745,27 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
+  Widget _buildTabButton(String label, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: AppColors.primaryText),
+          Text(
+            label,
+            style: TextStyle(color: AppColors.primaryText, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDetailsPage() {
-    final user = FirebaseAuth.instance.currentUser;
-    
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Preview Card
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -427,7 +776,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Image Thumbnail
                 if (_selectedImage != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -439,8 +787,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                   ),
                 const SizedBox(width: 12),
-                
-                // Caption Field
                 Expanded(
                   child: TextField(
                     controller: _captionController,
@@ -458,80 +804,107 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Music Info
           if (_selectedMusic != null) ...[
             _buildSelectedMusicCard(),
             const SizedBox(height: 16),
           ],
           
-          // Instagram-like Options
           _buildOptionTile(
             icon: Icons.person_outline,
             title: 'Tandai orang',
-            onTap: () {
-              // Implement tag people functionality
-            },
+            onTap: () {},
           ),
           _buildOptionTile(
             icon: Icons.location_on_outlined,
             title: 'Tambahkan lokasi',
-            subtitle: _selectedLocation,
-            onTap: () {
-              // Implement location picker
-            },
+            subtitle: _selectedLocation ?? '',
+            onTap: () {},
+          ),
+          
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.label_outline, color: AppColors.primaryText),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Tambahkan Label AI',
+                        style: TextStyle(
+                          color: AppColors.primaryText,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        'Kami mewajibkan Anda melabeli konten realistis tertentu yang dibuat dengan AI. Pelajari selengkapnya',
+                        style: TextStyle(
+                          color: AppColors.mutedText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _addAiLabel,
+                  onChanged: (value) {
+                    setState(() {
+                      _addAiLabel = value;
+                    });
+                  },
+                  activeColor: AppColors.primary,
+                ),
+              ],
+            ),
           ),
           
           const Divider(color: AppColors.borderColor),
           
-          // Advanced Settings
-          _buildSwitchTile(
-            title: 'Sembunyikan jumlah suka',
-            value: !_showLikeCount,
-            onChanged: (value) {
-              setState(() {
-                _showLikeCount = !value;
-              });
-            },
+          _buildOptionTile(
+            icon: Icons.visibility_outlined,
+            title: 'Pemirsa',
+            subtitle: _audience,
+            onTap: () {},
           ),
-          _buildSwitchTile(
-            title: 'Matikan komentar',
-            value: !_enableComments,
-            onChanged: (value) {
-              setState(() {
-                _enableComments = !value;
-              });
-            },
+          
+          _buildOptionTile(
+            icon: Icons.share_outlined,
+            title: 'Juga bagikan ke...',
+            subtitle: 'Nonaktif',
+            badge: 'BARU',
+            onTap: () {},
+          ),
+          
+          _buildOptionTile(
+            icon: Icons.more_horiz,
+            title: 'Opsi lainnya',
+            onTap: () {},
           ),
           
           const SizedBox(height: 24),
           
-          // Also Share To Section
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.borderColor),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Juga bagikan ke',
-                  style: TextStyle(
-                    color: AppColors.primaryText,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _buildSocialButton('Facebook', Icons.facebook),
-                    const SizedBox(width: 12),
-                    _buildSocialButton('Twitter', Icons.share),
-                  ],
-                ),
-              ],
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _loading ? null : _createPost,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+              child: _loading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text(
+                      'Bagikan',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -617,6 +990,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     required IconData icon,
     required String title,
     String? subtitle,
+    String? badge,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -639,12 +1013,33 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                   ),
                   if (subtitle != null)
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: AppColors.mutedText,
-                        fontSize: 14,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: AppColors.mutedText,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (badge != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              badge,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                 ],
               ),
@@ -655,100 +1050,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSwitchTile({
-    required String title,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                color: AppColors.primaryText,
-                fontSize: 16,
-              ),
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: AppColors.primary,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSocialButton(String label, IconData icon) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.borderColor),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: AppColors.mutedText, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: AppColors.mutedText,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ImageSourceSheet extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.borderColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
-          ListTile(
-            leading: Icon(Icons.camera_alt, color: AppColors.primaryText),
-            title: Text(
-              'Kamera',
-              style: TextStyle(color: AppColors.primaryText),
-            ),
-            onTap: () => Navigator.pop(context, ImageSource.camera),
-          ),
-          ListTile(
-            leading: Icon(Icons.photo_library, color: AppColors.primaryText),
-            title: Text(
-              'Galeri',
-              style: TextStyle(color: AppColors.primaryText),
-            ),
-            onTap: () => Navigator.pop(context, ImageSource.gallery),
-          ),
-          const SizedBox(height: 20),
-        ],
       ),
     );
   }
